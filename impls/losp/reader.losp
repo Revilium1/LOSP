@@ -1,0 +1,41 @@
+import re, types
+
+class Reader:
+	def __init__(self, tokens):
+		self.tokens = tokens
+		self.position = 0
+	def next(self):
+		self.position += 1
+		return(self.tokens[self.position-1])
+	def peek(self):
+		return(self.tokens[self.position])
+
+def read_str(input):
+	reader = Reader(tokenize(input))
+	read_form(reader)
+
+def tokenize(input=""):
+	return(re.findall(r"""[\s,]*(~@|[\[\]{}()'`~^@]|"(?:\\.|[^\\"])*"?|;.*|[^\s\[\]{}('"`,;)]*)""", input))
+
+def read_form(reader):
+	token = reader.peek()
+	if token == "(":
+		(read_list(reader))
+	else:
+		return(read_atom(reader))
+
+def read_list(reader):
+    reader.next()
+    result = []
+    token = reader.peek()
+    while token != ")":
+        result.append(read_form(reader))
+        token = reader.peek()
+    reader.next()
+    return result 
+
+def read_atom(reader):
+    tok = reader.next()
+    if re.match(r'^-?\d+$', tok):
+        return int(tok)
+    return MalSymbol(tok)

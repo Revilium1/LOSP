@@ -1,0 +1,16 @@
+def READ(input):
+	return(input)
+
+def EVAL(input):
+	return(input)
+
+def PRINT(input):
+	return(input)
+
+def REP(input):
+	return(PRINT(EVAL(READ(input))))
+while True:
+    try:
+        print(REP(input("user> ")))
+    except EOFError:
+        break

@@ -94,19 +94,19 @@ cd mal
 ```
 
 * Make a new directory for your implementation. For example, if your
-language is called "quux":
+language is called "losp":
 ```
-mkdir impls/quux
+mkdir impls/losp
 ```
 
 * Modify the top level Makefile.impls to allow the tests to be run against
-  your implementation. For example, if your language is named "quux"
-  and uses "qx" as the file extension, then make the following
+  your implementation. For example, if your language is named "losp"
+  and uses ".losp" as the file extension, then make the following
   3 modifications to Makefile.impls:
 ```
-IMPLS = ... quux ...
+IMPLS = ... losp ...
 ...
-quux_STEP_TO_PROG = impls/quux/$($(1)).qx
+losp_STEP_TO_PROG = impls/losp/$($(1)).losp
 ```
 
 * Add a "run" script to your implementation directory that listens to
@@ -115,7 +115,7 @@ quux_STEP_TO_PROG = impls/quux/$($(1)).qx
   executable file permission set (or else the test runner might fail with a
   permission denied error message). The following are examples of "run"
   scripts for a compiled language and an interpreted language (where
-  the interpreter is named "quux"):
+  the interpreter is named "losp"):
 
 ```
 #!/usr/bin/env bash
@@ -124,21 +124,21 @@ exec $(dirname $0)/${STEP:-stepA_mal} "${@}"
 
 ```
 #!/usr/bin/env bash
-exec quux $(dirname $0)/${STEP:-stepA_mal}.qx "${@}"
+exec losp $(dirname $0)/${STEP:-stepA_mal}.losp "${@}"
 ```
 
 This allows you to run tests against your implementation like this:
 ```
-make "test^quux^stepX"
+make "test^losp^stepX"
 ```
 
 If your implementation language is a compiled language, then you
 should also add a Makefile at the top level of your implementation
 directory. This Makefile will define how to build the files pointed to
-by the quux_STEP_TO_PROG macro. The top-level Makefile will attempt to
+by the losp_STEP_TO_PROG macro. The top-level Makefile will attempt to
 build those targets before running tests. If it is a scripting
 language/uncompiled, then no Makefile is necessary because
-quux_STEP_TO_PROG will point to a source file that already exists and
+losp_STEP_TO_PROG will point to a source file that already exists and
 does not need to be compiled/built.
 
 
@@ -207,7 +207,7 @@ so if you are new to Lisp or new to your implementation language then
 you may want to stick more closely to the guide your first time
 through to avoid frustration at later steps.
 
-In the steps that follow the name of the target language is "quux" and
+In the steps that follow the name of the target language is "losp" and
 the file extension for that language is "qx".
 
 
@@ -219,7 +219,7 @@ the file extension for that language is "qx".
 
 This step is basically just creating a skeleton of your interpreter.
 
-* Create a `step0_repl.qx` file in `impls/quux/`.
+* Create a `step0_repl.losp` file in `impls/losp/`.
 
 * Add the 4 trivial functions `READ`, `EVAL`, `PRINT`, and `rep`
   (read-eval-print). `READ`, `EVAL`, and `PRINT` are basically just
@@ -241,10 +241,10 @@ It is time to run your first tests. This will check that your program
 does input and output in a way that can be captured by the test
 harness. Go to the top level and run the following:
 ```
-make "test^quux^step0"
+make "test^losp^step0"
 ```
 
-Add and then commit your new `step0_repl.qx` and `Makefile` to git.
+Add and then commit your new `step0_repl.losp` and `Makefile` to git.
 
 Congratulations! You have just completed the first step of the
 make-a-lisp process.
@@ -257,7 +257,7 @@ make-a-lisp process.
   line editing support. Another option if your language supports it is
   to use an FFI (foreign function interface) to load and call directly
   into GNU readline, editline, or linenoise library. Add line
-  editing interface code to `readline.qx`
+  editing interface code to `readline.losp`
 
 
 <a name="step1"></a>
@@ -306,23 +306,23 @@ is more involved. The `make`, `ps` (postscript) and Haskell
 implementations have examples of a reader/parser without using regular
 expression support.
 
-* Copy `step0_repl.qx` to `step1_read_print.qx`.
+* Copy `step0_repl.losp` to `step1_read_print.losp`.
 
-* Add a `reader.qx` file to hold functions related to the reader.
+* Add a `reader.losp` file to hold functions related to the reader.
 
 * If the target language has object types (OOP), then the next step
-  is to create a simple stateful Reader object in `reader.qx`. This
+  is to create a simple stateful Reader object in `reader.losp`. This
   object will store the tokens and a position. The Reader object will
   have two methods: `next` and `peek`. `next` returns the token at
   the current position and increments the position. `peek` just
   returns the token at the current position.
 
-* Add a function `read_str` in `reader.qx`. This function
+* Add a function `read_str` in `reader.losp`. This function
   will call `tokenize` and then create a new Reader object instance
   with the tokens. Then it will call `read_form` with the Reader
   instance.
 
-* Add a function `tokenize` in `reader.qx`. This function will take
+* Add a function `tokenize` in `reader.losp`. This function will take
   a single string and return an array/list
   of all the tokens (strings) in it. The following regular expression
   (PCRE) will match all mal tokens.
@@ -352,7 +352,7 @@ expression support.
     characters (e.g. symbols, numbers, "true", "false", and "nil") and is sort
     of the inverse of the one above that captures special characters (tokenized).
 
-* Add the function `read_form` to `reader.qx`. This function
+* Add the function `read_form` to `reader.losp`. This function
   will peek at the first token in the Reader object and switch on the
   first character of that token. If the character is a left paren then
   `read_list` is called with the Reader object. Otherwise, `read_atom`
@@ -360,23 +360,23 @@ expression support.
   is a mal data type. If your target language is statically typed then
   you will need some way for `read_form` to return a variant or
   subclass type. For example, if your language is object oriented,
-  then you can define a top level MalType (in `types.qx`) that all
+  then you can define a top level MalType (in `types.losp`) that all
   your mal data types inherit from. The MalList type (which also
   inherits from MalType) will contain a list/array of other MalTypes.
   If your language is dynamically typed then you can likely just
   return a plain list/array of other mal types.
 
-* Add the function `read_list` to `reader.qx`. This function will
+* Add the function `read_list` to `reader.losp`. This function will
   repeatedly call `read_form` with the Reader object until it
   encounters a ')' token (if it reaches EOF before reading a ')' then
   that is an error). It accumulates the results into a List type.  If
   your language does not have a sequential data type that can hold mal
-  type values you may need to implement one (in `types.qx`).  Note
+  type values you may need to implement one (in `types.losp`).  Note
   that `read_list` repeatedly calls `read_form` rather than
   `read_atom`. This mutually recursive definition between `read_list`
   and `read_form` is what allows lists to contain lists.
 
-* Add the function `read_atom` to `reader.qx`. This function will
+* Add the function `read_atom` to `reader.losp`. This function will
   look at the contents of the token and return the appropriate scalar
   (simple/single) data type value. Initially, you can just implement
   numbers (integers) and symbols. This will allow you to proceed
@@ -388,7 +388,7 @@ expression support.
   object that contains a single string name value (some languages have
   symbol types already).
 
-* Add a file `printer.qx`. This file will contain a single function
+* Add a file `printer.losp`. This file will contain a single function
   `pr_str` which does the opposite of `read_str`: take a mal data
   structure and return a string representation of it. But `pr_str` is
   much simpler and is basically just a switch statement on the type of
@@ -400,7 +400,7 @@ expression support.
     it, then join the results with a space separator, and surround the
     final result with parens
 
-* Change the `READ` function in `step1_read_print.qx` to call
+* Change the `READ` function in `step1_read_print.losp` to call
   `reader.read_str` and the `PRINT` function to call `printer.pr_str`.
   `EVAL` continues to simply return its input but the type is now
   a mal data type.
@@ -416,13 +416,13 @@ manually try some simple inputs:
   * `(  + 2   (*  3  4)  )  ` -> `(+ 2 (* 3 4))`
 
 To verify that your code is doing more than just eliminating extra
-spaces (and not failing), you can instrument your `reader.qx` functions.
+spaces (and not failing), you can instrument your `reader.losp` functions.
 
 Once you have gotten past those simple manual tests, it is time to run
 the full suite of step 1 tests. Go to the top level and run the
 following:
 ```
-make "test^quux^step1"
+make "test^losp^step1"
 ```
 
 Fix any test failures related to symbols, numbers and lists.
@@ -525,7 +525,7 @@ the changes that will be made during this step:
 diff -u ../../process/step1_read_print.txt ../../process/step2_eval.txt
 ```
 
-* Copy `step1_read_print.qx` to `step2_eval.qx`.
+* Copy `step1_read_print.losp` to `step2_eval.losp`.
 
 * Define a simple initial REPL environment. This environment is an
   associative structure that maps symbols (or symbol names) to
@@ -572,7 +572,7 @@ a function reference using an arguments list.
 
 Now go to the top level, run the step 2 tests and fix the errors.
 ```
-make "test^quux^step2"
+make "test^losp^step2"
 ```
 
 You now have a simple prefix notation calculator!
@@ -626,9 +626,9 @@ the changes that will be made during this step:
 diff -u ../../process/step2_eval.txt ../../process/step3_env.txt
 ```
 
-* Copy `step2_eval.qx` to `step3_env.qx`.
+* Copy `step2_eval.losp` to `step3_env.losp`.
 
-* Create `env.qx` to hold the environment definition.
+* Create `env.losp` to hold the environment definition.
 
 * Define an `Env` object that is instantiated with a single `outer`
   parameter and starts with an empty associative data structure
@@ -645,7 +645,7 @@ diff -u ../../process/step2_eval.txt ../../process/step3_env.txt
     If no key is found up the outer chain, then report that the key is
     missing with the most idiomatic mechanism.
 
-* Update `step3_env.qx` to use the new `Env` type to create the
+* Update `step3_env.losp` to use the new `Env` type to create the
   repl_env (with a `nil` outer value) and use the `set` method to add
   the numeric functions.
 
@@ -690,7 +690,7 @@ Try some simple environment tests:
 
 Now go to the top level, run the step 3 tests and fix the errors.
 ```
-make "test^quux^step3"
+make "test^losp^step3"
 ```
 
 Your mal implementation is still basically just a numeric calculator
@@ -744,7 +744,7 @@ the changes that will be made during this step:
 diff -u ../../process/step3_env.txt ../../process/step4_if_fn_do.txt
 ```
 
-* Copy `step3_env.qx` to `step4_if_fn_do.qx`.
+* Copy `step3_env.losp` to `step4_if_fn_do.losp`.
 
 * If you have not implemented reader and printer support (and data
   types) for `nil`, `true` and `false`, you will need to do so for
@@ -754,7 +754,7 @@ diff -u ../../process/step3_env.txt ../../process/step4_if_fn_do.txt
   parameters: `binds` and `exprs`. Bind (`set`) each element (symbol)
   of the `binds` list to the respective element of the `exprs` list.
 
-* Add support to `printer.qx` to print function values. A string
+* Add support to `printer.losp` to print function values. A string
   literal like "#\<function>" is sufficient.
 
 * Add the following special forms to `EVAL`:
@@ -794,11 +794,11 @@ Try out the basic functionality you have implemented:
   * `( (fn* (a) (+ a 1)) 10)` -> `11`
   * `( (fn* (a b) (+ a b)) 2 3)` -> `5`
 
-* Add a new file `core.qx` and define an associative data structure
+* Add a new file `core.losp` and define an associative data structure
   `ns` (namespace) that maps symbols to functions. Move the numeric
   function definitions into this structure.
 
-* Modify `step4_if_fn_do.qx` to iterate through the `core.ns`
+* Modify `step4_if_fn_do.losp` to iterate through the `core.ns`
   structure and add (`set`) each symbol/function mapping to the
   REPL environment (`repl_env`).
 
@@ -826,7 +826,7 @@ tests in step 4 but all of the non-optional tests that do not involve
 strings should be able to pass now.
 
 ```
-make "test^quux^step4"
+make "test^losp^step4"
 ```
 
 Your mal implementation is already beginning to look like a real
@@ -844,11 +844,11 @@ from a neat toy to a full featured language.
   after the "&" is bound to the rest of the `exprs` list that has not
   been bound yet.
 
-* Define a `not` function using mal itself. In `step4_if_fn_do.qx`
+* Define a `not` function using mal itself. In `step4_if_fn_do.losp`
   call the `rep` function with this string:
   "(def! not (fn* (a) (if a false true)))".
 
-* Implement the string functions in `core.qx`. To implement these
+* Implement the string functions in `core.losp`. To implement these
   functions, you will need to implement the string support in the
   reader and printer (deferrable section of step 1). Each of the string
   functions takes multiple mal values, prints them (`pr_str`) and
@@ -895,7 +895,7 @@ the changes that will be made during this step:
 diff -u ../../process/step4_if_fn_do.txt ../../process/step5_tco.txt
 ```
 
-* Copy `step4_if_fn_do.qx` to `step5_tco.qx`.
+* Copy `step4_if_fn_do.losp` to `step5_tco.losp`.
 
 * Add a loop (e.g. while true) around all code in `EVAL`.
 
@@ -949,7 +949,7 @@ broken anything by adding TCO.
 Now go to the top level, run the step 5 tests.
 
 ```
-make "test^quux^step5"
+make "test^losp^step5"
 ```
 
 Look at the step 5 test file `tests/step5_tco.mal`. The `sum-to`
@@ -985,7 +985,7 @@ the changes that will be made during this step:
 diff -u ../../process/step5_tco.txt ../../process/step6_file.txt
 ```
 
-* Copy `step5_tco.qx` to `step6_file.qx`.
+* Copy `step5_tco.losp` to `step6_file.losp`.
 
 * Add two new string functions to the core namespaces:
   * `read-string`: this function just exposes the `read_str` function
@@ -1065,7 +1065,7 @@ Now go to the top level, run the step 6 tests. The optional tests will
 need support from the reader for comments, vectors, hash-maps and the `@`
 reader macro:
 ```
-make "test^quux^step6"
+make "test^losp^step6"
 ```
 
 Congratulations, you now have a full-fledged scripting language that
@@ -1081,7 +1081,7 @@ This isomorphism (same shape) between data and programs is known as
 distinguishes them from most other programming languages.
 
 Your mal implementation is quite powerful already but the set of
-functions that are available (from `core.qx`) is fairly limited. The
+functions that are available (from `core.losp`) is fairly limited. The
 bulk of the functions you will add are described in step 9 and step A,
 but you will begin to flesh them out over the next few steps to
 support quoting (step 7) and macros (step 8).
@@ -1157,7 +1157,7 @@ the changes that will be made during this step:
 diff -u ../../process/step6_file.txt ../../process/step7_quote.txt
 ```
 
-* Copy `step6_file.qx` to `step7_quote.qx`.
+* Copy `step6_file.losp` to `step7_quote.losp`.
 
 * Before implementing the quoting forms, you will need to implement
   some supporting functions in the core namespace:
@@ -1228,7 +1228,7 @@ Mal borrows most of its syntax and feature-set).
 
 Now go to the top level, run the step 7 tests:
 ```
-make "test^quux^step7"
+make "test^losp^step7"
 ```
 
 If some tests do not pass, it may be convenient to enable the debug
@@ -1301,7 +1301,7 @@ the changes that will be made during this step:
 diff -u ../../process/step7_quote.txt ../../process/step8_macros.txt
 ```
 
-* Copy `step7_quote.qx` to `step8_macros.qx`.
+* Copy `step7_quote.losp` to `step8_macros.losp`.
 
 
 You might think that the infinite power of macros would require some
@@ -1340,7 +1340,7 @@ mechanism.
 
 Now go to the top level, run the step 8 tests:
 ```
-make "test^quux^step8"
+make "test^losp^step8"
 ```
 
 There is a reasonably good chance that the macro tests will not pass
@@ -1420,7 +1420,7 @@ the changes that will be made during this step:
 diff -u ../../process/step8_macros.txt ../../process/step9_try.txt
 ```
 
-* Copy `step8_macros.qx` to `step9_try.qx`.
+* Copy `step8_macros.losp` to `step9_try.losp`.
 
 * Add the `try*/catch*` special form to the EVAL function. The
   try catch form looks like this: `(try* A (catch* B C))`. The form
@@ -1493,7 +1493,7 @@ diff -u ../../process/step8_macros.txt ../../process/step9_try.txt
 
 Now go to the top level, run the step 9 tests:
 ```
-make "test^quux^step9"
+make "test^losp^step9"
 ```
 
 Your mal implementation is now essentially a fully featured Lisp
@@ -1577,7 +1577,7 @@ the changes that will be made during this step:
 diff -u ../../process/step9_try.txt ../../process/stepA_mal.txt
 ```
 
-* Copy `step9_try.qx` to `stepA_mal.qx`.
+* Copy `step9_try.losp` to `stepA_mal.losp`.
 
 * Add the `readline` core function. This functions takes a
   string that is used to prompt the user for input. The line of text
@@ -1602,7 +1602,7 @@ diff -u ../../process/step9_try.txt ../../process/stepA_mal.txt
 
 Now go to the top level, run the step A tests:
 ```
-make "test^quux^stepA"
+make "test^losp^stepA"
 ```
 
 Once you have passed all the non-optional step A tests, it is time to
@@ -1610,11 +1610,11 @@ try self-hosting. Run your step A implementation as normal, but use
 the file argument mode you added in step 6 to run each step
 from the mal implementation:
 ```
-./stepA_mal.qx ../mal/step1_read_print.mal
-./stepA_mal.qx ../mal/step2_eval.mal
+./stepA_mal.losp ../mal/step1_read_print.mal
+./stepA_mal.losp ../mal/step2_eval.mal
 ...
-./stepA_mal.qx ../mal/step9_try.mal
-./stepA_mal.qx ../mal/stepA_mal.mal
+./stepA_mal.losp ../mal/step9_try.mal
+./stepA_mal.losp ../mal/stepA_mal.mal
 ```
 
 There is a very good chance that you will encounter an error at some
@@ -1636,7 +1636,7 @@ self-hosting when it is much more difficult to track down and fix.
 Once you can manually run all the self-hosted steps, it is time to run
 all the tests in self-hosted mode:
 ```
-make MAL_IMPL=quux "test^mal"
+make MAL_IMPL=losp "test^mal"
 ```
 
 When you run into problems (which you almost certainly will), use the
@@ -1682,7 +1682,7 @@ implementation.
     not possible, since another point in time (`time-ms` is usually
     used relatively to measure time durations).  After `time-ms` is
     implemented, you can run the performance micro-benchmarks by
-    running `make perf^quux`.
+    running `make perf^losp`.
   * `conj`: takes a collection and one or more elements as arguments
     and returns a new collection which includes the original
     collection and the new elements.  If the collection is a list, a
@@ -1702,14 +1702,14 @@ implementation.
     containing the original string split into single character
     strings.
 * For interop with the target language, add this core function:
-  * `quux-eval`: takes a string, evaluates it in the target language,
+  * `losp-eval`: takes a string, evaluates it in the target language,
     and returns the result converted to the relevant Mal type. You may
     also add other interop functions as you see fit; Clojure, for
     example, has a function called `.` which allows calling Java
     methods. If the target language is a static language, consider
     using FFI or some language-specific reflection mechanism, if
-    available. The tests for `quux-eval` and any other interop
-    function should be added in `impls/quux/tests/stepA_mal.mal` (see
+    available. The tests for `losp-eval` and any other interop
+    function should be added in `impls/losp/tests/stepA_mal.mal` (see
     the [tests for `lua-eval`](../impls/lua/tests/stepA_mal.mal) as an
     example).
 
