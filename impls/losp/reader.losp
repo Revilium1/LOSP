@@ -1,4 +1,5 @@
-import re, types
+import re
+from losptypes import LospSymbol
 
 class Reader:
 	def __init__(self, tokens):
@@ -12,7 +13,7 @@ class Reader:
 
 def read_str(input):
 	reader = Reader(tokenize(input))
-	read_form(reader)
+	return read_form(reader)
 
 def tokenize(input=""):
 	return(re.findall(r"""[\s,]*(~@|[\[\]{}()'`~^@]|"(?:\\.|[^\\"])*"?|;.*|[^\s\[\]{}('"`,;)]*)""", input))
@@ -20,7 +21,7 @@ def tokenize(input=""):
 def read_form(reader):
 	token = reader.peek()
 	if token == "(":
-		(read_list(reader))
+		return(read_list(reader))
 	else:
 		return(read_atom(reader))
 
@@ -38,4 +39,4 @@ def read_atom(reader):
     tok = reader.next()
     if re.match(r'^-?\d+$', tok):
         return int(tok)
-    return MalSymbol(tok)
+    return LospSymbol(tok)

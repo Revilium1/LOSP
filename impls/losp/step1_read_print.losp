@@ -1,11 +1,17 @@
+import sys
+sys.path.append("/workspaces/LOSP/impls/losp")
+
+import reader
+import printer
+
 def READ(input):
-	return(input)
+	return(reader.read_str(input))
 
 def EVAL(input):
 	return(input)
 
 def PRINT(input):
-	return(input)
+	return(printer.pr_str(input))
 
 def REP(input):
 	return(PRINT(EVAL(READ(input))))
