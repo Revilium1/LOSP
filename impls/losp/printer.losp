@@ -1,4 +1,4 @@
-from losptypes import LospSymbol, LospVector, LospHashMap, LospFunction, NIL
+from losptypes import LospSymbol, LospVector, LospHashMap, LospFunction, NIL, LospAtom
 
 def pr_str(losp_obj, readably=True):
     _r = readably
@@ -44,7 +44,11 @@ def pr_str(losp_obj, readably=True):
 
     if isinstance(losp_obj, LospFunction):
         return "#<function>"
+
     if callable(losp_obj):
         return("#<function>")
+
+    if isinstance(losp_obj, LospAtom):
+        return "(atom " + pr_str(losp_obj.value, True) + ")"
 
     raise TypeError(f"Cannot print object of type {type(losp_obj)}")

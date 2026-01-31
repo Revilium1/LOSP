@@ -1,37 +1,30 @@
 # core.losp
-from losptypes import LospSymbol, LospFunction, NIL
+from losptypes import LospSymbol, LospFunction, NIL, LospVector, LospHashMap, LospAtom
 
 # ---------------------------
-# Core functions
+# Printing
 # ---------------------------
 
 def prn(*args):
     import printer as _printer
-    # Print each argument using readable printing and separate by spaces
     print(" ".join(_printer.pr_str(a, True) for a in args))
     return NIL
 
 def println(*args):
     import printer as _printer
-    # Print each argument using non-readable printing and separate by spaces
     print(" ".join(_printer.pr_str(a, False) for a in args))
     return NIL
 
 def pr_str(*args):
-    from losptypes import LospFunction, NIL as LospNil
     import printer as _printer
-
-    def to_str(x):
-        # Delegate canonical string formatting to the printer (readably)
-        return _printer.pr_str(x, True)
-
-    # No args -> empty string
     if not args:
         return ""
-    # Arguments are separated by a single space
-    return " ".join(to_str(a) for a in args)
+    return " ".join(_printer.pr_str(a, True) for a in args)
 
+# ---------------------------
 # Lists
+# ---------------------------
+
 def list_fn(*args):
     return list(args)
 
@@ -39,23 +32,26 @@ def list_q(x):
     return isinstance(x, list)
 
 def empty_q(x):
-    from losptypes import LospVector
     return (isinstance(x, list) and len(x) == 0) or (isinstance(x, LospVector) and len(x) == 0)
 
 def count(x):
-    if x is None or x is  NIL:
+    if x is None or x is NIL:
         return 0
     return len(x)
 
 def first_fn(lst):
     if isinstance(lst, list) and lst:
         return lst[0]
-    return  NIL
+    return NIL
 
 def rest_fn(lst):
     if isinstance(lst, list) and lst:
         return lst[1:]
     return []
+
+# ---------------------------
+# Booleans
+# ---------------------------
 
 def not_fn(x):
     return x is False or x is NIL
@@ -63,53 +59,56 @@ def not_fn(x):
 def boolean_q(x):
     return x is True or x is False
 
-# string concatenation
-def str_fn(*args):
-    from losptypes import LospFunction, NIL as LospNil, LospVector, LospHashMap
+# ---------------------------
+# Strings
+# ---------------------------
 
-    def to_str(x, in_coll=False):
-        if x is LospNil:
+def str_fn(*args):
+    def to_str(x):
+        if x is NIL:
             return "nil"
         elif x is True:
             return "true"
         elif x is False:
             return "false"
         elif isinstance(x, str):
-            # Return raw string content; the final printer will handle escaping
             return x
         elif isinstance(x, list):
-            inner = ' '.join(to_str(i, True) for i in x)
-            return "(" + inner + ")"
+            return "(" + " ".join(to_str(i) for i in x) + ")"
         elif isinstance(x, LospVector):
-            inner = ' '.join(to_str(i, True) for i in x.items)
-            return "[" + inner + "]"
+            return "[" + " ".join(to_str(i) for i in x.items) + "]"
         elif isinstance(x, LospHashMap):
-            inner = ' '.join(
-                f'{to_str(x.items[i], True)} {to_str(x.items[i+1], True)}'
-                for i in range(0, len(x.items), 2)
-            )
-            return "{" + inner + "}"
+            return "{" + " ".join(f"{to_str(x.items[i])} {to_str(x.items[i+1])}" for i in range(0, len(x.items), 2)) + "}"
         elif isinstance(x, LospFunction):
             return "#<function>"
+        elif isinstance(x, LospAtom):
+            return "(atom " + to_str(x.value) + ")"
         else:
             return str(x)
+    return "".join(to_str(a) for a in args)
 
-    if not args:
-        return ""
-    return "".join(to_str(a, False) for a in args)
+def read_string(s):
+    import reader
+    if not isinstance(s, str):
+        raise TypeError("read-string expects a string")
+    return reader.read_str(s)
 
+def slurp(filename):
+    if not isinstance(filename, str):
+        raise TypeError("slurp expects a string")
+    with open(filename, "r", encoding="utf-8") as f:
+        return f.read()
+
+# ---------------------------
 # Comparison
+# ---------------------------
+
 def equal(a, b):
     if type(a) != type(b):
         return False
     if isinstance(a, list):
-        if len(a) != len(b):
-            return False
-        for x, y in zip(a, b):
-            if not equal(x, y):
-                return False
-        return True
-    if a is  NIL and b is  NIL:
+        return len(a) == len(b) and all(equal(x, y) for x, y in zip(a, b))
+    if a is NIL and b is NIL:
         return True
     return a == b
 
@@ -118,11 +117,71 @@ def lte(a, b): return a <= b
 def gt(a, b): return a > b
 def gte(a, b): return a >= b
 
+# ---------------------------
 # Arithmetic
+# ---------------------------
+
 def add(a, b): return a + b
 def sub(a, b): return a - b
 def mul(a, b): return a * b
 def div(a, b): return int(a / b)
+
+# ---------------------------
+# Atoms
+# ---------------------------
+
+# Atoms
+def atom_fn(x):
+    """Creates a new LospAtom pointing to x."""
+    from losptypes import LospAtom
+    return LospAtom(x)
+
+def atom_q(x):
+    """Returns True if x is a LospAtom."""
+    from losptypes import LospAtom
+    return isinstance(x, LospAtom)
+
+def deref(atom):
+    """Returns the value inside an atom."""
+    from losptypes import LospAtom
+    if not isinstance(atom, LospAtom):
+        raise TypeError("deref expects an atom")
+    return atom.value
+
+def reset_bang(atom, value):
+    """Sets the atom's value to value and returns value."""
+    from losptypes import LospAtom
+    if not isinstance(atom, LospAtom):
+        raise TypeError("reset! expects an atom")
+    atom.value = value
+    return value
+
+def swap_bang(atom, fn, *args):
+    """Updates an atom's value using fn and optional arguments."""
+    from losptypes import LospAtom
+
+    if not isinstance(atom, LospAtom):
+        raise TypeError("swap! expects an atom")
+
+    # Python function
+    if callable(fn):
+        new_val = fn(atom.value, *args)
+
+    # LospFunction (MAL function)
+    elif hasattr(fn, 'fn'):
+        # Build AST: (fn atom.value arg1 arg2 ...)
+        call_ast = [fn, atom.value] + list(args)
+        # You **must** provide EVAL and environment here
+        # Typically, swap! is called inside your REPL / EVAL loop, so:
+        # new_val = EVAL(call_ast, current_env)
+        # We'll pass in the environment at call-time via a wrapper
+        raise TypeError("MAL functions in swap! require env-aware wrapper")
+
+    else:
+        raise TypeError("swap! first arg must be an atom and second arg must be callable")
+
+    atom.value = new_val
+    return new_val
 
 # ---------------------------
 # Core namespace
@@ -138,6 +197,7 @@ ns = {
     # Printing
     LospSymbol('prn'): prn,
     LospSymbol('pr-str'): pr_str,
+    LospSymbol('println'): println,
 
     # Lists
     LospSymbol('list'): list_fn,
@@ -149,7 +209,8 @@ ns = {
 
     # Strings
     LospSymbol('str'): str_fn,
-    LospSymbol('println'): println,
+    LospSymbol('read-string'): read_string,
+    LospSymbol('slurp'): slurp,
 
     # Comparison
     LospSymbol('='): equal,
@@ -159,4 +220,11 @@ ns = {
     LospSymbol('>='): gte,
     LospSymbol('not'): not_fn,
     LospSymbol('boolean?'): boolean_q,
+
+    # Atoms
+    LospSymbol('atom'): atom_fn,
+    LospSymbol('atom?'): atom_q,
+    LospSymbol('deref'): deref,
+    LospSymbol('reset!'): reset_bang,
+    LospSymbol('swap!'): swap_bang,
 }

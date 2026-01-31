@@ -1,5 +1,5 @@
 import re
-from losptypes import LospSymbol, LospVector, LospHashMap
+from losptypes import LospSymbol, LospVector, LospHashMap, NIL
 
 # -----------------------------
 # Reader class
@@ -147,7 +147,7 @@ def read_atom(reader):
 
     # ---- Booleans / nil ----
     if tok == "nil":
-        return LospSymbol("nil")
+        return NIL
     if tok == "true":
         return True
     if tok == "false":
