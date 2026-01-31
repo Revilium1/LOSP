@@ -104,12 +104,36 @@ def slurp(filename):
 # ---------------------------
 
 def equal(a, b):
-    if type(a) != type(b):
-        return False
-    if isinstance(a, list):
-        return len(a) == len(b) and all(equal(x, y) for x, y in zip(a, b))
+    # nil comparison
     if a is NIL and b is NIL:
         return True
+
+    # both plain Python lists
+    if isinstance(a, list) and isinstance(b, list):
+        return len(a) == len(b) and all(equal(x, y) for x, y in zip(a, b))
+
+    # both LospVector
+    if isinstance(a, LospVector) and isinstance(b, LospVector):
+        return len(a.items) == len(b.items) and all(equal(x, y) for x, y in zip(a.items, b.items))
+
+    # cross-type: list vs LospVector
+    if isinstance(a, list) and isinstance(b, LospVector):
+        return len(a) == len(b.items) and all(equal(x, y) for x, y in zip(a, b.items))
+    if isinstance(a, LospVector) and isinstance(b, list):
+        return len(a.items) == len(b) and all(equal(x, y) for x, y in zip(a.items, b))
+
+    # hash maps (compare key/value pairs pairwise)
+    if isinstance(a, LospHashMap) and isinstance(b, LospHashMap):
+        if len(a.items) != len(b.items):
+            return False
+        for i in range(0, len(a.items), 2):
+            if not (equal(a.items[i], b.items[i]) and equal(a.items[i+1], b.items[i+1])):
+                return False
+        return True
+
+    # fallback to Python equality, but only for same types
+    if type(a) != type(b):
+        return False
     return a == b
 
 def lt(a, b): return a < b
