@@ -1,0 +1,65 @@
+import reader, printer
+from losptypes import LospSymbol, LospVector, LospHashMap
+
+repl_env = {LospSymbol('+'): lambda a,b: a+b,
+            LospSymbol('-'): lambda a,b: a-b,
+            LospSymbol('*'): lambda a,b: a*b,
+            LospSymbol('/'): lambda a,b: int(a/b)}
+
+def READ(input):
+	return(reader.read_str(input))
+
+from losptypes import LospSymbol, LospVector, LospHashMap
+
+def EVAL(ast, env):
+    # Symbols
+    if isinstance(ast, LospSymbol):
+        # Treat keywords as literal values
+        if ast.name.startswith(":"):
+            return ast
+        elif ast in env:
+            return env[ast]
+        else:
+            raise KeyError(f"Symbol '{ast}' not found in environment")
+
+    # List
+    elif isinstance(ast, list) and ast:
+        evaluated = [EVAL(x, env) for x in ast]
+        func = evaluated[0]
+        args = evaluated[1:]
+        return func(*args)
+
+    # Vector
+    elif isinstance(ast, LospVector):
+        return LospVector([EVAL(x, env) for x in ast.items])
+
+    # Hash map
+    elif isinstance(ast, LospHashMap):
+        new_items = []
+        items = ast.items
+        for i in range(0, len(items), 2):
+            k = EVAL(items[i], env)
+            v = EVAL(items[i+1], env)
+            new_items.extend([k, v])
+        return LospHashMap(new_items)
+
+    # All other literals
+    else:
+        return ast
+
+
+def PRINT(input):
+	return(printer.pr_str(input))
+
+def REP(input):
+	return(PRINT(EVAL(READ(input), repl_env)))
+while True:
+    try:
+        print(REP(input("user> ")))
+    except EOFError:
+        print("\nGoodbye!")
+        break
+    except SyntaxError as e:
+        print(f"SyntaxError: {e}")
+    except KeyError as e:
+        print(f"SyntaxError: {e}")
