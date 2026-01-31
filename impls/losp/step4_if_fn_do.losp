@@ -1,0 +1,209 @@
+# ---------------------------
+# step4_if_fn_do.losp
+# ---------------------------
+import reader, printer, core
+from env import Env
+from losptypes import LospSymbol, LospVector, LospHashMap, LospFunction, NIL
+
+# ---------------------------
+# Setup REPL environment
+# ---------------------------
+repl_env = Env()
+
+# Load core functions
+for sym, fn in core.ns.items():
+    repl_env.set(sym, fn)
+
+# Core literals
+repl_env.set(LospSymbol("nil"), NIL)
+repl_env.set(LospSymbol("true"), True)
+repl_env.set(LospSymbol("false"), False)
+
+# ---------------------------
+# Helpers
+# ---------------------------
+def is_truthy(val):
+    return val is not False and val is not NIL
+
+# ---------------------------
+# EVAL
+# ---------------------------
+def EVAL(ast, env):
+    # ---------------------------
+    # Symbols
+    # ---------------------------
+    if isinstance(ast, LospSymbol):
+        # keywords stay as symbols
+        if ast.name.startswith(":"):
+            return ast
+        # special case for 'nil'
+        if ast.name == "nil":
+            return NIL
+        return env.get(ast)
+
+    # ---------------------------
+    # Lists
+    # ---------------------------
+    if isinstance(ast, list):
+        if len(ast) == 0:
+            return []  # empty list
+
+        first = ast[0]
+
+        # ---------------------------
+        # Special forms
+        # ---------------------------
+        if isinstance(first, LospSymbol):
+            # def!
+            if first.name == "def!":
+                sym = ast[1]
+                val = EVAL(ast[2], env)
+                env.set(sym, val)
+                return val
+
+            # let*
+            elif first.name == "let*":
+                bindings = ast[1]
+                body = ast[2]
+                let_env = Env(env)
+                for i in range(0, len(bindings), 2):
+                    let_env.set(bindings[i], EVAL(bindings[i + 1], let_env))
+                return EVAL(body, let_env)
+
+            # do
+            elif first.name == "do":
+                result = NIL
+                for expr in ast[1:]:
+                    result = EVAL(expr, env)
+                return result
+
+            # if
+            elif first.name == "if":
+                cond = EVAL(ast[1], env)
+                # only NIL or False are falsy
+                if cond is NIL or cond is False:
+                    if len(ast) > 3:
+                        return EVAL(ast[3], env)
+                    else:
+                        return NIL
+                else:
+                    return EVAL(ast[2], env)
+
+            # fn*
+            elif first.name == "fn*":
+                params = ast[1]
+                body = ast[2:]
+                return LospFunction(params=params, body=body, env=env)
+
+        # ---------------------------
+        # Function application
+        # ---------------------------
+        evaluated = [EVAL(x, env) for x in ast]
+        func = evaluated[0]
+        args = evaluated[1:]
+
+        if isinstance(func, LospFunction):
+            call_env = Env(func.env)
+            params = func.params
+            args_copy = list(args)
+
+            # Collect parameter names
+            param_names = [p.name if isinstance(p, LospSymbol) else None for p in params]
+
+            # Handle & rest argument
+            if "&" in param_names:
+                amp_index = param_names.index("&")
+                fixed_params = params[:amp_index]
+                if amp_index + 1 >= len(params):
+                    raise TypeError("Function has '&' but no symbol after it")
+                rest_param = params[amp_index + 1]
+
+                # Check for too few arguments for fixed params
+                if len(args_copy) < len(fixed_params):
+                    raise TypeError(
+                        f"Expected at least {len(fixed_params)} args, got {len(args_copy)}"
+                    )
+
+                # Bind fixed parameters
+                for p, a in zip(fixed_params, args_copy[:len(fixed_params)]):
+                    call_env.set(p, a)
+
+                # Bind rest of the arguments as a list
+                call_env.set(rest_param, args_copy[len(fixed_params):])
+
+            else:
+                # Normal parameter binding: exact number of arguments
+                if len(args_copy) != len(params):
+                    raise TypeError(f"Expected {len(params)} args, got {len(args_copy)}")
+                for p, a in zip(params, args_copy):
+                    call_env.set(p, a)
+
+            # Evaluate function body
+            result = NIL
+            for expr in func.body:
+                result = EVAL(expr, call_env)
+            return result
+        elif callable(func):
+            return func(*args)
+        else:
+            raise TypeError(f"{func} is not callable")
+
+    # ---------------------------
+    # Vectors
+    # ---------------------------
+    if isinstance(ast, LospVector):
+        return LospVector([EVAL(x, env) for x in ast.items])
+
+    # ---------------------------
+    # HashMaps
+    # ---------------------------
+    if isinstance(ast, LospHashMap):
+        new_items = []
+        for i in range(0, len(ast.items), 2):
+            k = EVAL(ast.items[i], env)
+            v = EVAL(ast.items[i + 1], env)
+            new_items.extend([k, v])
+        return LospHashMap(new_items)
+
+    # ---------------------------
+    # Literals
+    # ---------------------------
+    return ast
+
+# Attach static eval to LospFunction
+LospFunction.EVAL_fn = staticmethod(EVAL)
+
+# ---------------------------
+# REPL helpers
+# ---------------------------
+def READ(s):
+    return reader.read_str(s)
+
+def PRINT(val):
+    return printer.pr_str(val)
+
+def REP(s):
+    return PRINT(EVAL(READ(s), repl_env))
+
+# ---------------------------
+# REPL loop
+# ---------------------------
+if __name__ == "__main__":
+    import sys
+    while True:
+        try:
+            sys.stdout.write(REP(input("user> ")) + "\n")
+            sys.stdout.flush()
+        except EOFError:
+            sys.stdout.write("\nGoodbye!\n")
+            sys.stdout.flush()
+            break
+        except KeyError as e:
+            sys.stdout.write(f"KeyError: {e}\n")
+            sys.stdout.flush()
+        except TypeError as e:
+            sys.stdout.write(f"TypeError: {e}\n")
+            sys.stdout.flush()
+        except Exception as e:
+            sys.stdout.write(f"Error: {e}\n")
+            sys.stdout.flush()

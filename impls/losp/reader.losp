@@ -135,12 +135,19 @@ def read_atom(reader):
     if tok.startswith('"'):
         if not is_string_complete(tok):
             raise SyntaxError("Unexpected EOF while reading string literal")
-        # remove quotes (does not handle escape sequences fully)
-        return tok[1:-1]
+        # remove surrounding quotes
+        s = tok[1:-1]
+        # Handle basic escape sequences (e.g., \n, \", \\)
+        try:
+            s = bytes(s, "utf-8").decode("unicode_escape")
+        except Exception:
+            # Fallback: return the raw string if decoding fails
+            pass
+        return s
 
     # ---- Booleans / nil ----
     if tok == "nil":
-        return None
+        return LospSymbol("nil")
     if tok == "true":
         return True
     if tok == "false":

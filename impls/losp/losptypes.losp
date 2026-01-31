@@ -1,15 +1,17 @@
+from env import Env
+
 class LospSymbol:
     def __init__(self, name):
         self.name = name
-
-    def __repr__(self):
-        return f"Symbol({self.name})"
 
     def __eq__(self, other):
         return isinstance(other, LospSymbol) and self.name == other.name
 
     def __hash__(self):
         return hash(self.name)
+
+    def __repr__(self):
+        return self.name
 
 class LospVector:
     def __init__(self, items):
@@ -34,10 +36,54 @@ class LospVector:
 
 class LospHashMap:
     def __init__(self, items):
-        # items is a list of key-value pairs [k1,v1,k2,v2,...]
         if len(items) % 2 != 0:
             raise SyntaxError("Hash map literal must have an even number of forms")
         self.items = items
 
     def __repr__(self):
         return f"HashMap({self.items})"
+
+class LospFunction:
+    EVAL_fn = staticmethod(None)  # linked later
+
+    def __init__(self, params, body, env=None, name=None):
+        self.params = params
+        self.body = body
+        self.env = env
+        self.name = name
+
+    def __repr__(self):
+        return f"#<function {self.name.name}>" if self.name else "#<function>"
+
+    def __call__(self, *args):
+        if len(args) != len(self.params):
+            raise TypeError(f"Expected {len(self.params)} args, got {len(args)}")
+
+        # Bind parameters in a new environment
+        local_env = Env(self.env, binds=self.params, exprs=args)
+
+        # Ensure body is iterable
+        body_expressions = self.body if isinstance(self.body, list) else [self.body]
+
+        result = None
+        for expr in body_expressions:
+            result = self.EVAL_fn(expr, local_env)
+        return result
+# losptypes.py
+
+class LospNil:
+    """Singleton object representing nil in LOSP."""
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(LospNil, cls).__new__(cls)
+        return cls._instance
+
+    def __repr__(self):
+        return "nil"
+
+    def __bool__(self):
+        # nil is falsey
+        return False
+NIL = LospNil()

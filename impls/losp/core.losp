@@ -1,0 +1,164 @@
+# core.losp
+from losptypes import LospSymbol, LospFunction, NIL
+
+# ---------------------------
+# Core functions
+# ---------------------------
+
+def prn(*args):
+    import printer as _printer
+    # Print each argument using readable printing and separate by spaces
+    print(" ".join(_printer.pr_str(a, True) for a in args))
+    return NIL
+
+def println(*args):
+    import printer as _printer
+    # Print each argument using non-readable printing and separate by spaces
+    print(" ".join(_printer.pr_str(a, False) for a in args))
+    return NIL
+
+def pr_str(*args):
+    from losptypes import LospFunction, NIL as LospNil
+    import printer as _printer
+
+    def to_str(x):
+        # Delegate canonical string formatting to the printer (readably)
+        return _printer.pr_str(x, True)
+
+    # No args -> empty string
+    if not args:
+        return ""
+    # Arguments are separated by a single space
+    return " ".join(to_str(a) for a in args)
+
+# Lists
+def list_fn(*args):
+    return list(args)
+
+def list_q(x):
+    return isinstance(x, list)
+
+def empty_q(x):
+    from losptypes import LospVector
+    return (isinstance(x, list) and len(x) == 0) or (isinstance(x, LospVector) and len(x) == 0)
+
+def count(x):
+    if x is None or x is  NIL:
+        return 0
+    return len(x)
+
+def first_fn(lst):
+    if isinstance(lst, list) and lst:
+        return lst[0]
+    return  NIL
+
+def rest_fn(lst):
+    if isinstance(lst, list) and lst:
+        return lst[1:]
+    return []
+
+def not_fn(x):
+    return x is False or x is NIL
+
+def boolean_q(x):
+    return x is True or x is False
+
+# string concatenation
+def str_fn(*args):
+    from losptypes import LospFunction, NIL as LospNil, LospVector, LospHashMap
+
+    def to_str(x, in_coll=False):
+        if x is LospNil:
+            return "nil"
+        elif x is True:
+            return "true"
+        elif x is False:
+            return "false"
+        elif isinstance(x, str):
+            # Return raw string content; the final printer will handle escaping
+            return x
+        elif isinstance(x, list):
+            inner = ' '.join(to_str(i, True) for i in x)
+            return "(" + inner + ")"
+        elif isinstance(x, LospVector):
+            inner = ' '.join(to_str(i, True) for i in x.items)
+            return "[" + inner + "]"
+        elif isinstance(x, LospHashMap):
+            inner = ' '.join(
+                f'{to_str(x.items[i], True)} {to_str(x.items[i+1], True)}'
+                for i in range(0, len(x.items), 2)
+            )
+            return "{" + inner + "}"
+        elif isinstance(x, LospFunction):
+            return "#<function>"
+        else:
+            return str(x)
+
+    if not args:
+        return ""
+    return "".join(to_str(a, False) for a in args)
+
+# Comparison
+def equal(a, b):
+    # Allow lists and vectors to be compared as sequences
+    from losptypes import LospVector
+    if isinstance(a, (list, LospVector)) and isinstance(b, (list, LospVector)):
+        if len(a) != len(b):
+            return False
+        for x, y in zip(list(a), list(b)):
+            if not equal(x, y):
+                return False
+        return True
+    if type(a) != type(b):
+        return False
+    if a is  NIL and b is  NIL:
+        return True
+    return a == b
+
+def lt(a, b): return a < b
+def lte(a, b): return a <= b
+def gt(a, b): return a > b
+def gte(a, b): return a >= b
+
+# Arithmetic
+def add(a, b): return a + b
+def sub(a, b): return a - b
+def mul(a, b): return a * b
+def div(a, b): return int(a / b)
+
+# ---------------------------
+# Core namespace
+# ---------------------------
+
+ns = {
+    # Numeric
+    LospSymbol('+'): add,
+    LospSymbol('-'): sub,
+    LospSymbol('*'): mul,
+    LospSymbol('/'): div,
+
+    # Printing
+    LospSymbol('prn'): prn,
+    LospSymbol('pr-str'): pr_str,
+
+    # Lists
+    LospSymbol('list'): list_fn,
+    LospSymbol('list?'): list_q,
+    LospSymbol('empty?'): empty_q,
+    LospSymbol('count'): count,
+    LospSymbol('first'): first_fn,
+    LospSymbol('rest'): rest_fn,
+
+    # Strings
+    LospSymbol('str'): str_fn,
+    LospSymbol('println'): println,
+
+    # Comparison
+    LospSymbol('='): equal,
+    LospSymbol('<'): lt,
+    LospSymbol('<='): lte,
+    LospSymbol('>'): gt,
+    LospSymbol('>='): gte,
+    LospSymbol('not'): not_fn,
+    LospSymbol('boolean?'): boolean_q,
+}
