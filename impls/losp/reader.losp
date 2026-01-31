@@ -1,42 +1,190 @@
 import re
-from losptypes import LospSymbol
+from losptypes import LospSymbol, LospVector, LospHashMap
 
+# -----------------------------
+# Reader class
+# -----------------------------
 class Reader:
-	def __init__(self, tokens):
-		self.tokens = tokens
-		self.position = 0
-	def next(self):
-		self.position += 1
-		return(self.tokens[self.position-1])
-	def peek(self):
-		return(self.tokens[self.position])
+    def __init__(self, tokens):
+        self.tokens = tokens
+        self.position = 0
 
-def read_str(input):
-	reader = Reader(tokenize(input))
-	return read_form(reader)
+    def next(self):
+        if self.position >= len(self.tokens):
+            raise EOFError("No more tokens to read") 
+        token = self.tokens[self.position]
+        self.position += 1
+        return token
 
+    def peek(self):
+        if self.position >= len(self.tokens):
+            return None 
+        return self.tokens[self.position]
+
+# -----------------------------
+# Tokenizer
+# -----------------------------
 def tokenize(input=""):
-	return(re.findall(r"""[\s,]*(~@|[\[\]{}()'`~^@]|"(?:\\.|[^\\"])*"?|;.*|[^\s\[\]{}('"`,;)]*)""", input))
+    # Capture symbols, numbers, strings, brackets, quotes, etc.
+    tokens = re.findall(
+        r"""[\s,]*(~@|[\[\]{}()'`~^@]|"(?:\\.|[^\\"])*"?|;.*|[^\s\[\]{}('"`,;)]*)""",
+        input
+    )
+    # Remove empty tokens and comments
+    return [t for t in tokens if t != '' and not t.startswith(';')]
 
+# -----------------------------
+# Top-level reader
+# -----------------------------
+def read_str(input):
+    reader = Reader(tokenize(input))
+    return read_form(reader)
+
+# -----------------------------
+# Read forms
+# -----------------------------
 def read_form(reader):
-	token = reader.peek()
-	if token == "(":
-		return(read_list(reader))
-	else:
-		return(read_atom(reader))
+    tok = reader.peek()
 
+    # Skip comments (everything after ';' on the same line)
+    while tok and tok.startswith(';'):
+        reader.next()  # Skip the comment token
+        tok = reader.peek()  # Look at the next token
+
+    # Quote shorthands
+    if tok == "'":
+        reader.next()
+        return [LospSymbol("quote"), read_form(reader)]
+    if tok == "`":
+        reader.next()
+        return [LospSymbol("quasiquote"), read_form(reader)]
+    if tok == "~":
+        reader.next()
+        return [LospSymbol("unquote"), read_form(reader)]
+    if tok == "~@":
+        reader.next()
+        return [LospSymbol("splice-unquote"), read_form(reader)]
+    if tok == "@":
+        reader.next()
+        return [LospSymbol("deref"), read_form(reader)]
+    if tok == "^":
+        reader.next()
+        meta = read_form(reader)  # Read the metadata
+        form = read_form(reader)  # Read the form it's associated with
+        return [LospSymbol("with-meta"), form, meta]
+    # Handle hash maps (if applicable)
+    if tok == "{":
+        return read_hash_map(reader)
+
+    # List
+    if tok == "(":
+        return read_list(reader)
+
+    # Vector
+    if tok == "[":
+        return read_vector(reader)
+
+    # Atom
+    return read_atom(reader)
+
+# -----------------------------
+# Read a list
+# -----------------------------
 def read_list(reader):
-    reader.next()
-    result = []
-    token = reader.peek()
-    while token != ")":
-        result.append(read_form(reader))
-        token = reader.peek()
-    reader.next()
-    return result 
+    tok = reader.next()  # consume '('
+    if tok != "(":
+        raise SyntaxError(f"Expected '(', got {tok!r}")
 
+    result = []
+    while True:
+        tok = reader.peek()
+        if tok is None:
+            raise SyntaxError("Unexpected EOF while reading list")
+        if tok == ")":
+            reader.next()
+            break
+        result.append(read_form(reader))
+    return result
+
+# -----------------------------
+# Read a vector
+# -----------------------------
+def read_vector(reader):
+    tok = reader.next()  # consume '['
+    if tok != "[":
+        raise SyntaxError(f"Expected '[', got {tok!r}")
+
+    result = []
+    while True:
+        tok = reader.peek()
+        if tok is None:
+            raise SyntaxError("Unexpected EOF while reading vector")
+        if tok == "]":
+            reader.next()
+            break
+        result.append(read_form(reader))
+    return LospVector(result)
+
+# -----------------------------
+# Read an atom (number, symbol, string, boolean, nil)
+# -----------------------------
 def read_atom(reader):
     tok = reader.next()
+
+    # ---- Strings ----
+    if tok.startswith('"'):
+        if not is_string_complete(tok):
+            raise SyntaxError("Unexpected EOF while reading string literal")
+        # remove quotes (does not handle escape sequences fully)
+        return tok[1:-1]
+
+    # ---- Booleans / nil ----
+    if tok == "nil":
+        return None
+    if tok == "true":
+        return True
+    if tok == "false":
+        return False
+
+    # ---- Numbers ----
     if re.match(r'^-?\d+$', tok):
         return int(tok)
+    if re.match(r'^-?\d+\.\d+$', tok):
+        return float(tok)
+
+    # ---- Symbols ----
     return LospSymbol(tok)
+
+# -----------------------------
+# Helper: check string termination
+# -----------------------------
+def is_string_complete(s):
+    """Return True if string s is properly terminated (not ending with escaped quote)"""
+    if len(s) < 2:      # must be at least "" to be valid
+        return False
+    if not s.endswith('"'):
+        return False  # no closing quote at all
+    # Count consecutive backslashes before the final quote
+    backslashes = 0
+    i = len(s) - 2
+    while i >= 0 and s[i] == '\\':
+        backslashes += 1
+        i -= 1
+    return backslashes % 2 == 0
+
+def read_hash_map(reader):
+    tok = reader.next()  # consume '{'
+    if tok != "{":
+        raise SyntaxError(f"Expected '{{', got {tok!r}")
+    items = []
+    while True:
+        tok = reader.peek()
+        if tok is None:
+            raise SyntaxError("Unexpected EOF while reading hash map")
+        if tok == "}":
+            reader.next()
+            break
+        items.append(read_form(reader))
+    if len(items) % 2 != 0:
+        raise SyntaxError("Hash map literal must contain an even number of forms")
+    return LospHashMap(items)

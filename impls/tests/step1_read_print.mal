@@ -226,8 +226,8 @@ false
 ({})
 ;=>({})
 
-;; Testing read of comments
- ;; whole line comment (not an exception)
+;;; Testing read of comments
+;;; whole line comment (not an exception)
 1 ; comment after expression
 ;=>1
 1; comment after expression

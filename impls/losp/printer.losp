@@ -1,14 +1,29 @@
-from losptypes import LospSymbol
+from losptypes import LospSymbol, LospVector, LospHashMap
+
 def pr_str(losp_obj):
+    if losp_obj is None:
+        return "nil"
+    if losp_obj is True:
+        return "true"
+    if losp_obj is False:
+        return "false"
     if isinstance(losp_obj, LospSymbol):
         return losp_obj.name
-    
-    elif isinstance(losp_obj, (int, float)):
+    if isinstance(losp_obj, (int, float)):
         return str(losp_obj)
-    
-    elif isinstance(losp_obj, list):
+    if isinstance(losp_obj, str):
+        return f'"{losp_obj}"'
+    if isinstance(losp_obj, list):
         inner = ' '.join(pr_str(el) for el in losp_obj)
         return f'({inner})'
-    
-    else:
-        raise TypeError(f"Cannot print object of type {type(losp_obj)}")
+    if isinstance(losp_obj, LospVector):
+        inner = ' '.join(pr_str(el) for el in losp_obj.items)
+        return f'[{inner}]'
+    if isinstance(losp_obj, LospVector):
+        inner = ' '.join(pr_str(el) for el in losp_obj.items)
+        return f'[{inner}]'
+    if isinstance(losp_obj, LospHashMap):
+        inner = ' '.join(f'{pr_str(losp_obj.items[i])} {pr_str(losp_obj.items[i+1])}'
+        for i in range(0, len(losp_obj.items), 2))
+    return f'{{{inner}}}'
+    raise TypeError(f"Cannot print object of type {type(losp_obj)}")

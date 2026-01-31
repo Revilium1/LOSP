@@ -19,4 +19,7 @@ while True:
     try:
         print(REP(input("user> ")))
     except EOFError:
+        print("\nGoodbye!")
         break
+    except SyntaxError as e:
+        print(f"SyntaxError: {e}")
