@@ -100,17 +100,15 @@ def str_fn(*args):
 
 # Comparison
 def equal(a, b):
-    # Allow lists and vectors to be compared as sequences
-    from losptypes import LospVector
-    if isinstance(a, (list, LospVector)) and isinstance(b, (list, LospVector)):
+    if type(a) != type(b):
+        return False
+    if isinstance(a, list):
         if len(a) != len(b):
             return False
-        for x, y in zip(list(a), list(b)):
+        for x, y in zip(a, b):
             if not equal(x, y):
                 return False
         return True
-    if type(a) != type(b):
-        return False
     if a is  NIL and b is  NIL:
         return True
     return a == b
