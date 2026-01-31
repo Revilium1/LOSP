@@ -1,0 +1,96 @@
+import reader, printer
+from env import Env
+from losptypes import LospSymbol, LospVector, LospHashMap
+
+repl_env = Env(None)
+
+repl_env.set(LospSymbol('+'), lambda a, b: a + b)
+repl_env.set(LospSymbol('-'), lambda a, b: a - b)
+repl_env.set(LospSymbol('*'), lambda a, b: a * b)
+repl_env.set(LospSymbol('/'), lambda a, b: int(a / b))
+
+def READ(input):
+	return(reader.read_str(input))
+
+def is_truthy(val):
+    return val is not False and val is not None
+
+def EVAL(ast, env):
+    try:
+        debug = env.get(LospSymbol("DEBUG-EVAL"))
+        if is_truthy(debug):
+            print("EVAL:", printer.pr_str(ast))
+    except KeyError:
+        pass
+    # ---------- symbols ----------
+    if isinstance(ast, LospSymbol):
+        if ast.name.startswith(":"):
+            return ast
+        return env.get(ast)
+
+    # ---------- lists (forms / applications) ----------
+    elif isinstance(ast, list) and ast:
+        first = ast[0]
+
+        # --- def! ---
+        if isinstance(first, LospSymbol) and first.name == "def!":
+            symbol = ast[1]                 # unevaluated
+            value = EVAL(ast[2], env)       # evaluated
+            env.set(symbol, value)
+            return value
+
+        # --- let* ---
+        elif isinstance(first, LospSymbol) and first.name == "let*":
+            bindings = ast[1]
+            body = ast[2]
+
+            let_env = Env(env)
+
+            # bindings are key/value pairs
+            for i in range(0, len(bindings), 2):
+                key = bindings[i]                       # unevaluated
+                val = EVAL(bindings[i + 1], let_env)   # evaluated in let_env
+                let_env.set(key, val)
+
+            return EVAL(body, let_env)
+
+        # --- function application ---
+        else:
+            evaluated = [EVAL(x, env) for x in ast]
+            func = evaluated[0]
+            args = evaluated[1:]
+            return func(*args)
+
+    # ---------- vectors ----------
+    elif isinstance(ast, LospVector):
+        return LospVector([EVAL(x, env) for x in ast.items])
+
+    # ---------- hash maps ----------
+    elif isinstance(ast, LospHashMap):
+        new_items = []
+        items = ast.items
+        for i in range(0, len(items), 2):
+            k = EVAL(items[i], env)
+            v = EVAL(items[i + 1], env)
+            new_items.extend([k, v])
+        return LospHashMap(new_items)
+
+    # ---------- literals ----------
+    else:
+        return ast
+
+def PRINT(input):
+	return(printer.pr_str(input))
+
+def REP(input):
+	return(PRINT(EVAL(READ(input), repl_env)))
+while True:
+    try:
+        print(REP(input("user> ")))
+    except EOFError:
+        print("\nGoodbye!")
+        break
+    except SyntaxError as e:
+        print(f"SyntaxError: {e}")
+    except KeyError as e:
+        print(f"SyntaxError: {e}")
