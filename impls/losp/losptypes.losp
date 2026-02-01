@@ -57,11 +57,26 @@ class LospFunction:
         return f"#<function {self.name.name}>" if self.name else "#<function>"
 
     def __call__(self, *args):
-        if len(args) != len(self.params):
-            raise TypeError(f"Expected {len(self.params)} args, got {len(args)}")
+        # Support variadic parameters using '&' in params list
+        params = self.params
+        if any(isinstance(p, LospSymbol) and p.name == "&" for p in params):
+            amp_index = next(i for i, p in enumerate(params) if isinstance(p, LospSymbol) and p.name == "&")
+            fixed_params = params[:amp_index]
+            if amp_index + 1 >= len(params):
+                raise TypeError("Function has '&' but no symbol after it")
+            rest_param = params[amp_index + 1]
 
-        # Bind parameters in a new environment
-        local_env = Env(self.env, binds=self.params, exprs=args)
+            if len(args) < len(fixed_params):
+                raise TypeError(f"Expected at least {len(fixed_params)} args, got {len(args)}")
+
+            local_env = Env(self.env)
+            for p, a in zip(fixed_params, args[:len(fixed_params)]):
+                local_env.set(p, a)
+            local_env.set(rest_param, list(args[len(fixed_params):]))
+        else:
+            if len(args) != len(params):
+                raise TypeError(f"Expected {len(params)} args, got {len(args)}")
+            local_env = Env(self.env, binds=params, exprs=args)
 
         # Ensure body is iterable
         body_expressions = self.body if isinstance(self.body, list) else [self.body]

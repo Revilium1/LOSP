@@ -1,0 +1,285 @@
+import reader, printer, core, sys
+from env import Env
+from core import quasiquote, equal
+from losptypes import LospSymbol, LospVector, LospHashMap, LospFunction, NIL
+
+
+# ==============================
+# losp Exception for throw
+# ==============================
+class lospException(Exception):
+    """Wraps a losp value for throw/try*."""
+    def __init__(self, value):
+        self.value = value
+        super().__init__(str(value))
+
+
+# ==============================
+# REPL Environment
+# ==============================
+repl_env = Env()
+for sym, fn in core.ns.items():
+    repl_env.set(sym, fn)
+
+def eval_fn(ast):
+    return EVAL(ast, repl_env)
+
+repl_env.set(LospSymbol("nil"), NIL)
+repl_env.set(LospSymbol("true"), True)
+repl_env.set(LospSymbol("false"), False)
+repl_env.set(LospSymbol("eval"), eval_fn)
+repl_env.set(LospSymbol("*ARGV*"), [])
+
+# Add core throw function
+def losp_throw(val):
+    raise lospException(val)
+
+repl_env.set(LospSymbol("throw"), losp_throw)
+
+
+# ==============================
+# Helpers
+# ==============================
+def is_truthy(val):
+    return val is not False and val is not NIL
+
+
+# ==============================
+# Core EVAL
+# ==============================
+def EVAL(ast, env):
+    while True:
+
+        # -----------------------
+        # Symbols
+        # -----------------------
+        if isinstance(ast, LospSymbol):
+            if ast.name.startswith(":"):
+                return ast
+            if ast.name == "nil":
+                return NIL
+            return env.get(ast)
+
+        # -----------------------
+        # Lists
+        # -----------------------
+        if isinstance(ast, list):
+
+            if len(ast) == 0:
+                return []
+
+            first = ast[0]
+
+            # ---------- special forms ----------
+            if isinstance(first, LospSymbol):
+
+                if first.name == "quote":
+                    return ast[1]
+
+                elif first.name == "quasiquote":
+                    ast = quasiquote(ast[1])
+                    continue
+
+                elif first.name == "def!":
+                    val = EVAL(ast[2], env)
+                    env.set(ast[1], val)
+                    return val
+
+                elif first.name == "defmacro!":
+                    val = EVAL(ast[2], env)
+                    if not isinstance(val, LospFunction):
+                        raise TypeError("defmacro! expects a function")
+                    val.is_macro = True
+                    env.set(ast[1], val)
+                    return val
+
+                elif first.name == "let*":
+                    new_env = Env(env)
+                    bindings = ast[1]
+                    for i in range(0, len(bindings), 2):
+                        new_env.set(bindings[i], EVAL(bindings[i + 1], new_env))
+                    ast = ast[2]
+                    env = new_env
+                    continue
+
+                elif first.name == "do":
+                    for expr in ast[1:-1]:
+                        EVAL(expr, env)
+                    ast = ast[-1]
+                    continue
+
+                elif first.name == "if":
+                    cond = EVAL(ast[1], env)
+                    ast = ast[2] if is_truthy(cond) else (ast[3] if len(ast) > 3 else NIL)
+                    continue
+
+                elif first.name == "cond":
+                    xs = ast[1:]
+                    if len(xs) == 0:
+                        return NIL
+                    def build(i):
+                        if i >= len(xs):
+                            return NIL
+                        if i + 1 >= len(xs):
+                            raise SyntaxError("odd number of forms to cond")
+                        test = xs[i]
+                        expr = xs[i+1]
+                        rest = build(i+2)
+                        return [LospSymbol('if'), test, expr, rest]
+                    ast = build(0)
+                    continue
+
+                elif first.name == "fn*":
+                    fn = LospFunction(params=ast[1], body=ast[2:], env=env)
+                    fn.fn = fn
+                    return fn
+
+                elif first.name == "try*":
+                    # (try* A) or (try* A (catch* B C))
+                    try_block = ast[1]
+                    catch_form = ast[2] if len(ast) > 2 else None
+
+                    # If no catch form provided, just evaluate the try block and
+                    # let any exceptions propagate to the caller (REPL/test harness).
+                    if catch_form is None:
+                        return EVAL(try_block, env)
+
+                    if (not isinstance(catch_form, list) or
+                        len(catch_form) != 3 or
+                        not isinstance(catch_form[0], LospSymbol) or
+                        catch_form[0].name != "catch*"):
+                        raise SyntaxError("Malformed try*/catch* form")
+                    catch_symbol = catch_form[1]
+                    catch_body = catch_form[2]
+
+                    try:
+                        return EVAL(try_block, env)
+                    except lospException as e:
+                        new_env = Env(env)
+                        new_env.set(catch_symbol, e.value)
+                        ast = catch_body
+                        env = new_env
+                        continue
+                    except KeyError as e:
+                        # Normalize KeyError messages to "'<name>' not found"
+                        # so tests see a consistent message for missing symbols.
+                        new_env = Env(env)
+                        msg = None
+                        if e.args:
+                            arg = e.args[0]
+                            if isinstance(arg, str) and arg.endswith(" not found"):
+                                base = arg[:-len(" not found")]
+                                msg = f"'{base}' not found"
+                            else:
+                                msg = f"'{arg}' not found"
+                        else:
+                            msg = str(e)
+                        new_env.set(catch_symbol, msg)
+                        ast = catch_body
+                        env = new_env
+                        continue
+                    except Exception as e:
+                        # Wrap native Python exception in losp string
+                        new_env = Env(env)
+                        new_env.set(catch_symbol, str(e))
+                        ast = catch_body
+                        env = new_env
+                        continue
+
+            # ---------- APPLY PHASE ----------
+            f = EVAL(ast[0], env)
+
+            # Macro expansion
+            if isinstance(f, LospFunction) and getattr(f, "is_macro", False):
+                ast = f(*ast[1:])
+                continue
+
+            # Normal function call
+            args = [EVAL(x, env) for x in ast[1:]]
+            if isinstance(f, LospFunction):
+                env = Env(f.env, binds=f.params, exprs=args)
+                for expr in f.body[:-1]:
+                    EVAL(expr, env)
+                ast = f.body[-1]
+                continue
+            if callable(f):
+                return f(*args)
+            raise TypeError(f"{f} is not callable")
+
+        # -----------------------
+        # Vectors
+        # -----------------------
+        if isinstance(ast, LospVector):
+            return LospVector([EVAL(x, env) for x in ast.items])
+
+        # -----------------------
+        # Hash maps
+        # -----------------------
+        if isinstance(ast, LospHashMap):
+            items = []
+            for i in range(0, len(ast.items), 2):
+                k = EVAL(ast.items[i], env)
+                v = EVAL(ast.items[i + 1], env)
+                # canonicalize duplicate keys: later wins
+                found = False
+                for j in range(0, len(items), 2):
+                    if equal(items[j], k):
+                        items[j+1] = v
+                        found = True
+                        break
+                if not found:
+                    items.extend([k, v])
+            return LospHashMap(items)
+
+        # -----------------------
+        # Primitives
+        # -----------------------
+        return ast
+
+
+LospFunction.EVAL_fn = staticmethod(EVAL)
+
+
+# ==============================
+# READ, PRINT, REP
+# ==============================
+def READ(s):
+    return reader.read_str(s)
+
+
+def PRINT(val):
+    return printer.pr_str(val)
+
+
+def REP(s):
+    return PRINT(EVAL(READ(s), repl_env))
+
+
+# ==============================
+# Load File Helper
+# ==============================
+REP('(def! load-file (fn* (f) (eval (read-string (str "(do " (slurp f) "\nnil)")))))')
+
+
+# ==============================
+# REPL Loop
+# ==============================
+if __name__ == "__main__":
+    while True:
+        try:
+            s = input("user> ")
+        except EOFError:
+            print("\nGoodbye!")
+            break
+
+        try:
+            out = REP(s)
+            print(out)
+        except KeyError as e:
+            print(f"KeyError: {e}")
+        except TypeError as e:
+            print(f"TypeError: {e}")
+        except lospException as e:
+            print(f"lospException: {e.value}")
+        except Exception as e:
+            print(f"Error: {e}")

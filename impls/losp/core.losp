@@ -81,6 +81,42 @@ def not_fn(x):
 def boolean_q(x):
     return x is True or x is False
 
+def apply(f, *args):
+    if len(args) == 0:
+        raise TypeError("apply requires at least two arguments: a function and a list/vector")
+
+    # Build list of arguments from prefix args and the last list/vector
+    prefix = list(args[:-1])
+    last = args[-1]
+
+    if isinstance(last, list):
+        combined = prefix + last
+    elif isinstance(last, LospVector):
+        combined = prefix + last.items
+    else:
+        raise TypeError("apply expects a list or vector as the last argument")
+
+    # If f is a LospFunction, delegate to its __call__ which binds params and
+    # evaluates the body. For native callables, just call with the combined args.
+    if isinstance(f, LospFunction):
+        return f(*combined)
+    elif callable(f):
+        return f(*combined)
+    else:
+        raise TypeError("apply only supports functions or macros")
+
+
+def map(f, coll):
+    """Applies the function `f` to each element of the collection `coll` and
+    returns a plain list of results (per MAL test expectations)."""
+    if isinstance(coll, list):
+        return [f(x) for x in coll]
+    elif isinstance(coll, LospVector):
+        # Return a plain list, not a vector
+        return [f(x) for x in coll.items]
+    else:
+        raise TypeError("map only supports lists or vectors")
+
 # ---------------------------
 # Strings
 # ---------------------------
@@ -125,6 +161,153 @@ def slurp(filename):
 # Comparison
 # ---------------------------
 
+def nil_q(value):
+    return value is NIL
+
+def true_q(value):
+    return value is True
+
+def false_q(value):
+    return value is False
+
+def symbol_q(value):
+    return isinstance(value, LospSymbol) and (not value.name.startswith(':'))
+
+def keyword_q(value):
+    return isinstance(value, LospSymbol) and value.name.startswith(':')
+
+
+def symbol_fn(s):
+    if not isinstance(s, str):
+        raise TypeError("symbol expects a string")
+    return LospSymbol(s)
+
+
+def keyword_fn(s):
+    if isinstance(s, LospSymbol):
+        if s.name.startswith(":"):
+            return s
+        else:
+            return LospSymbol(":" + s.name)
+    if not isinstance(s, str):
+        raise TypeError("keyword expects a string or symbol")
+    return LospSymbol(":" + s)
+
+
+def sequential_q(x):
+    return isinstance(x, list) or isinstance(x, LospVector)
+
+
+def vector_q(x):
+    return isinstance(x, LospVector)
+
+
+def vector_fn(*args):
+    return LospVector(list(args))
+
+
+def map_q(x):
+    return isinstance(x, LospHashMap)
+
+
+def hash_map(*args):
+    # Create a canonical hash map where later key occurrences override earlier ones
+    if len(args) % 2 != 0:
+        raise TypeError("hash-map expects an even number of arguments")
+    items = []
+    for i in range(0, len(args), 2):
+        k = args[i]
+        v = args[i+1]
+        found = False
+        for j in range(0, len(items), 2):
+            if equal(items[j], k):
+                items[j+1] = v
+                found = True
+                break
+        if not found:
+            items.extend([k, v])
+    return LospHashMap(items)
+
+
+def assoc(mp, *args):
+    if not isinstance(mp, LospHashMap):
+        raise TypeError("assoc expects a hash-map as first argument")
+    if len(args) % 2 != 0:
+        raise TypeError("assoc expects an even number of key/value pairs")
+    items = list(mp.items)
+    for i in range(0, len(args), 2):
+        k = args[i]
+        v = args[i+1]
+        found = False
+        for j in range(0, len(items), 2):
+            if equal(items[j], k):
+                items[j+1] = v
+                found = True
+                break
+        if not found:
+            items.extend([k, v])
+    return LospHashMap(items)
+
+def dissoc(mp, *keys):
+    if mp is NIL:
+        return mp
+    if not isinstance(mp, LospHashMap):
+        raise TypeError("dissoc expects a hash-map as first argument")
+    items = []
+    for i in range(0, len(mp.items), 2):
+        k = mp.items[i]
+        v = mp.items[i+1]
+        skip = False
+        for key in keys:
+            if equal(k, key):
+                skip = True
+                break
+        if not skip:
+            items.extend([k, v])
+    return LospHashMap(items)
+
+def get_fn(mp, key, default=None):
+    """Retrieve value for key from hash-map or default (default is NIL)."""
+    if default is None:
+        default = NIL
+    if mp is NIL:
+        return default
+    if not isinstance(mp, LospHashMap):
+        raise TypeError("get expects a hash-map as first argument")
+    for i in range(0, len(mp.items), 2):
+        if equal(mp.items[i], key):
+            return mp.items[i+1]
+    return default
+
+
+def contains_q(mp, key):
+    """Return True if mp contains key."""
+    if mp is NIL:
+        return False
+    if not isinstance(mp, LospHashMap):
+        raise TypeError("contains? expects a hash-map as first argument")
+    for i in range(0, len(mp.items), 2):
+        if equal(mp.items[i], key):
+            return True
+    return False
+
+
+def keys(mp):
+    if mp is NIL:
+        return []
+    if not isinstance(mp, LospHashMap):
+        raise TypeError("keys expects a hash-map as first argument")
+    return [mp.items[i] for i in range(0, len(mp.items), 2)]
+
+
+def vals(mp):
+    if mp is NIL:
+        return []
+    if not isinstance(mp, LospHashMap):
+        raise TypeError("vals expects a hash-map as first argument")
+    return [mp.items[i+1] for i in range(0, len(mp.items), 2)]
+
+
 def equal(a, b):
     # nil comparison
     if a is NIL and b is NIL:
@@ -144,12 +327,22 @@ def equal(a, b):
     if isinstance(a, LospVector) and isinstance(b, list):
         return len(a.items) == len(b) and all(equal(x, y) for x, y in zip(a.items, b))
 
-    # hash maps (compare key/value pairs pairwise)
+    # hash maps (compare key/value pairs, order-insensitive)
     if isinstance(a, LospHashMap) and isinstance(b, LospHashMap):
         if len(a.items) != len(b.items):
             return False
+        # For each key in a, find equal key in b and compare values
         for i in range(0, len(a.items), 2):
-            if not (equal(a.items[i], b.items[i]) and equal(a.items[i+1], b.items[i+1])):
+            key = a.items[i]
+            val = a.items[i+1]
+            found = False
+            for j in range(0, len(b.items), 2):
+                if equal(key, b.items[j]):
+                    if not equal(val, b.items[j+1]):
+                        return False
+                    found = True
+                    break
+            if not found:
                 return False
         return True
 
@@ -332,6 +525,8 @@ ns = {
     LospSymbol('str'): str_fn,
     LospSymbol('read-string'): read_string,
     LospSymbol('slurp'): slurp,
+    LospSymbol('symbol'): symbol_fn,
+    LospSymbol('keyword'): keyword_fn,
 
     # Comparison
     LospSymbol('='): equal,
@@ -341,6 +536,12 @@ ns = {
     LospSymbol('>='): gte,
     LospSymbol('not'): not_fn,
     LospSymbol('boolean?'): boolean_q,
+    LospSymbol('nil?'): nil_q,
+    LospSymbol('true?'): true_q,
+    LospSymbol('false?'): false_q,
+    LospSymbol('symbol?'): symbol_q,
+    LospSymbol('keyword?'): keyword_q,
+    LospSymbol('sequential?'): sequential_q,
 
     # Atoms
     LospSymbol('atom'): atom_fn,
@@ -349,10 +550,23 @@ ns = {
     LospSymbol('reset!'): reset_bang,
     LospSymbol('swap!'): swap_bang,
 
+    LospSymbol("apply"): apply,
+    LospSymbol("map"): map,
+
     # Quotes
     LospSymbol('cons'): cons,
     LospSymbol('concat'): concat,
     LospSymbol('vec'): vec_fn,
     LospSymbol('quasiquote'): quasiquote,
     LospSymbol('macro?'): macro_q,
+    LospSymbol('vector?'): vector_q,
+    LospSymbol('vector'): vector_fn,
+    LospSymbol('map?'): map_q,
+    LospSymbol('hash-map'): hash_map,
+    LospSymbol('assoc'): assoc,
+    LospSymbol('get'): get_fn,
+    LospSymbol('contains?'): contains_q,
+    LospSymbol('keys'): keys,
+    LospSymbol('vals'): vals,
+    LospSymbol('dissoc'): dissoc,
 }
