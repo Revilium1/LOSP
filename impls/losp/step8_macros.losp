@@ -1,0 +1,292 @@
+import reader, printer, core, sys
+from env import Env
+from core import quasiquote
+from losptypes import LospSymbol, LospVector, LospHashMap, LospFunction, NIL
+
+
+repl_env = Env()
+
+
+for sym, fn in core.ns.items():
+    repl_env.set(sym, fn)
+
+def eval_fn(ast):
+    return EVAL(ast, repl_env)
+
+repl_env.set(LospSymbol("nil"), NIL)
+repl_env.set(LospSymbol("true"), True)
+repl_env.set(LospSymbol("false"), False)
+repl_env.set(LospSymbol("eval"), eval_fn)
+repl_env.set(LospSymbol("*ARGV*"), [])
+repl_env.set(LospSymbol("defmacro!"), True)  # dummy value to make the symbol exist
+
+def is_truthy(val):
+    return val is not False and val is not NIL
+
+def EVAL(ast, env):
+    """Full evaluator with macros and TCO"""
+    while True:
+        # -----------------------
+        # Symbols
+        # -----------------------
+        if isinstance(ast, LospSymbol):
+            if ast.name.startswith(":"):
+                return ast
+            if ast.name == "nil":
+                return NIL
+            return env.get(ast)
+
+        # -----------------------
+        # Lists
+        # -----------------------
+        if isinstance(ast, list):
+
+            if len(ast) == 0:
+                return []
+
+            first = ast[0]
+
+            # ---------- Special forms ----------
+            if isinstance(first, LospSymbol):
+
+                if first.name == "quote":
+                    return ast[1]
+
+                elif first.name == "quasiquote":
+                    ast = quasiquote(ast[1])
+                    # If DEBUG-EVAL is set in the environment, print the expanded AST
+                    try:
+                        dbgeval = env.get(LospSymbol("DEBUG-EVAL"))
+                    except KeyError:
+                        dbgeval = False
+                    if dbgeval is True:
+                        sys.stdout.write("EVAL: " + printer.pr_str(ast, True) + "\n")
+                        sys.stdout.flush()
+                    continue
+
+                elif first.name == "def!":
+                    val = EVAL(ast[2], env)
+                    env.set(ast[1], val)
+                    return val
+
+                elif first.name == "defmacro!":
+                    val = EVAL(ast[2], env)
+                    if not isinstance(val, LospFunction):
+                        raise TypeError("defmacro! expects a function")
+                    val.is_macro = True
+                    env.set(ast[1], val)
+                    return val
+
+                elif first.name == "let*":
+                    new_env = Env(env)
+                    bindings = ast[1]
+                    for i in range(0, len(bindings), 2):
+                        new_env.set(bindings[i], EVAL(bindings[i + 1], new_env))
+                    ast = ast[2]
+                    env = new_env
+                    continue
+
+                elif first.name == "do":
+                    for expr in ast[1:-1]:
+                        EVAL(expr, env)
+                    ast = ast[-1]
+                    continue
+
+                elif first.name == "if":
+                    cond = EVAL(ast[1], env)
+                    if not is_truthy(cond):
+                        ast = ast[3] if len(ast) > 3 else NIL
+                    else:
+                        ast = ast[2]
+                    continue
+
+                elif first.name == "fn*":
+                    fn = LospFunction(
+                        params=ast[1],
+                        body=ast[2:],
+                        env=env
+                    )
+                    fn.fn = fn
+                    return fn
+
+                elif first.name == "cond":
+                    # If 'cond' is defined as a macro in the environment, let
+                    # the macro expansion mechanism handle it instead of the
+                    # built-in special form.
+                    try:
+                        bound = env.get(LospSymbol("cond"))
+                        if isinstance(bound, LospFunction) and getattr(bound, "is_macro", False):
+                            # fall through so macro expansion will occur in apply phase
+                            pass
+                        else:
+                            if len(ast) == 1:
+                                return NIL
+                            conditions = ast[1:]
+                            while conditions:
+                                cond_val = EVAL(conditions[0], env)
+                                if is_truthy(cond_val):
+                                    return EVAL(conditions[1], env)
+                                conditions = conditions[2:]
+                            return NIL
+                    except KeyError:
+                        if len(ast) == 1:
+                            return NIL
+                        conditions = ast[1:]
+                        while conditions:
+                            cond_val = EVAL(conditions[0], env)
+                            if is_truthy(cond_val):
+                                return EVAL(conditions[1], env)
+                            conditions = conditions[2:]
+                        return NIL
+
+            # ---------- Apply phase ----------
+            f = EVAL(ast[0], env)
+
+            # --- Macro expansion ---
+            if isinstance(f, LospFunction) and getattr(f, "is_macro", False):
+                # Manual macro invocation to bind parameters to the literal AST
+                # forms (not their evaluated values), including support for
+                # '&' rest parameter.
+                params = f.params
+                args_asts = ast[1:]
+
+                call_env = Env(f.env)
+                if any(isinstance(p, LospSymbol) and p.name == "&" for p in params):
+                    # Handle rest parameter
+                    amp_index = next(i for i, p in enumerate(params) if isinstance(p, LospSymbol) and p.name == "&")
+                    fixed_params = params[:amp_index]
+                    if amp_index + 1 >= len(params):
+                        raise TypeError("Macro has '&' but no symbol after it")
+                    rest_param = params[amp_index + 1]
+
+                    # Bind fixed params
+                    for p, a in zip(fixed_params, args_asts[:len(fixed_params)]):
+                        call_env.set(p, a)
+
+                    # Bind rest param to list of remaining ASTs
+                    call_env.set(rest_param, args_asts[len(fixed_params):])
+                else:
+                    # Simple binding: exact number of args required
+                    if len(args_asts) != len(params):
+                        raise TypeError(f"Expected {len(params)} args, got {len(args_asts)}")
+                    for p, a in zip(params, args_asts):
+                        call_env.set(p, a)
+
+                # Evaluate macro body (macro code is evaluated in its own env)
+                result = None
+                for expr in f.body:
+                    result = EVAL(expr, call_env)
+                ast = result
+
+                # Print expanded AST when DEBUG-EVAL is set
+                try:
+                    dbgeval = env.get(LospSymbol("DEBUG-EVAL"))
+                except KeyError:
+                    dbgeval = False
+                if dbgeval is True:
+                    sys.stdout.write("EVAL: " + printer.pr_str(ast, True) + "\n")
+                    sys.stdout.flush()
+                continue
+
+            # --- Normal function call ---
+            args = [EVAL(x, env) for x in ast[1:]]
+
+            if isinstance(f, LospFunction):
+                env = Env(f.env, binds=f.params, exprs=args)
+                for expr in f.body[:-1]:
+                    EVAL(expr, env)
+                ast = f.body[-1]
+                continue
+
+            if callable(f):
+                return f(*args)
+
+            raise TypeError(f"{f} is not callable")
+
+        # -----------------------
+        # Vectors
+        # -----------------------
+        if isinstance(ast, LospVector):
+            return LospVector([EVAL(x, env) for x in ast.items])
+
+        # -----------------------
+        # Hash maps
+        # -----------------------
+        if isinstance(ast, LospHashMap):
+            items = []
+            for i in range(0, len(ast.items), 2):
+                items.append(EVAL(ast.items[i], env))
+                items.append(EVAL(ast.items[i + 1], env))
+            return LospHashMap(items)
+
+        # -----------------------
+        # Primitives
+        # -----------------------
+        return ast
+
+LospFunction.EVAL_fn = staticmethod(EVAL)
+
+
+def READ(s):
+    return reader.read_str(s)
+
+
+def PRINT(val):
+    return printer.pr_str(val)
+
+
+def REP(s):
+    return PRINT(EVAL(READ(s), repl_env))
+
+REP('(def! load-file (fn* (f) (eval (read-string (str "(do " (slurp f) "\nnil)")))))')
+REP("""
+(defmacro! cond
+  (fn* (& xs)
+    (if (empty? xs)
+      nil
+      (list 'if
+            (first xs)
+            (nth xs 1)
+            (cons 'cond (rest (rest xs)))))))
+""")
+
+if __name__ == "__main__":
+    import sys
+
+    while True:
+        # Handle EOF from input() (i.e., stdin closed) separately from errors
+        try:
+            s = input("user> ")
+        except EOFError:
+            try:
+                sys.stdout.write("\nGoodbye!\n")
+                sys.stdout.flush()
+            except OSError:
+                pass
+            break
+        # Process the input and report errors without exiting the REPL
+        try:
+            out = REP(s)
+            try:
+                sys.stdout.write(out + "\n")
+                sys.stdout.flush()
+            except OSError:
+                break
+        except KeyError as e:
+            try:
+                sys.stdout.write(f"KeyError: {e}\n")
+                sys.stdout.flush()
+            except OSError:
+                break
+        except TypeError as e:
+            try:
+                sys.stdout.write(f"TypeError: {e}\n")
+                sys.stdout.flush()
+            except OSError:
+                break
+        except Exception as e:
+            try:
+                sys.stdout.write(f"Error: {e}\n")
+                sys.stdout.flush()
+            except OSError:
+                break

@@ -42,12 +42,34 @@ def count(x):
 def first_fn(lst):
     if isinstance(lst, list) and lst:
         return lst[0]
+    if isinstance(lst, LospVector) and len(lst.items) > 0:
+        return lst.items[0]
     return NIL
 
 def rest_fn(lst):
     if isinstance(lst, list) and lst:
         return lst[1:]
+    if isinstance(lst, LospVector) and len(lst.items) > 0:
+        return lst.items[1:]
     return []
+
+def nth(coll, n):
+    if not isinstance(n, int):
+        raise TypeError("nth expects an integer index")
+
+    if isinstance(coll, list):
+        try:
+            return coll[n]
+        except IndexError:
+            raise IndexError("nth index out of range")
+
+    if isinstance(coll, LospVector):
+        try:
+            return coll.items[n]
+        except IndexError:
+            raise IndexError("nth index out of range")
+
+    raise TypeError("nth expects a list or vector")
 
 # ---------------------------
 # Booleans
@@ -230,6 +252,11 @@ def concat(*args):
     return result  # Return concatenated list
 
 
+def macro_q(x):
+    """Returns True if x is a macro (a LospFunction with is_macro flag)."""
+    return isinstance(x, LospFunction) and getattr(x, 'is_macro', False)
+
+
 def vec_fn(x):
     """Convert a list to a LospVector or return a LospVector unchanged."""
     if isinstance(x, list):
@@ -276,7 +303,6 @@ def quasiquote(ast):
     # Case 4: everything else (numbers, strings, etc.)
     return ast
 
-
 # ---------------------------
 # Core namespace
 # ---------------------------
@@ -300,6 +326,7 @@ ns = {
     LospSymbol('count'): count,
     LospSymbol('first'): first_fn,
     LospSymbol('rest'): rest_fn,
+    LospSymbol('nth'): nth,
 
     # Strings
     LospSymbol('str'): str_fn,
@@ -327,4 +354,5 @@ ns = {
     LospSymbol('concat'): concat,
     LospSymbol('vec'): vec_fn,
     LospSymbol('quasiquote'): quasiquote,
+    LospSymbol('macro?'): macro_q,
 }
