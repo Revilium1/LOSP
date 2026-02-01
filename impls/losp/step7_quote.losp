@@ -1,0 +1,189 @@
+import reader, printer, core, sys
+from env import Env
+from core import quasiquote
+from losptypes import LospSymbol, LospVector, LospHashMap, LospFunction, NIL
+
+
+repl_env = Env()
+
+
+for sym, fn in core.ns.items():
+    repl_env.set(sym, fn)
+
+def eval_fn(ast):
+    return EVAL(ast, repl_env)
+
+repl_env.set(LospSymbol("nil"), NIL)
+repl_env.set(LospSymbol("true"), True)
+repl_env.set(LospSymbol("false"), False)
+repl_env.set(LospSymbol("eval"), eval_fn)
+repl_env.set(LospSymbol("*ARGV*"), [])
+
+def is_truthy(val):
+    return val is not False and val is not NIL
+
+
+def EVAL(ast, env):
+    while True:
+
+        if isinstance(ast, LospSymbol):
+            if ast.name.startswith(":"):
+                return ast
+            if ast.name == "nil":
+                return NIL
+            return env.get(ast)
+
+        if isinstance(ast, list):
+            if len(ast) == 0:
+                return []
+
+            first = ast[0]
+
+            if isinstance(first, LospSymbol):
+                if first.name == "quasiquote":
+                    # Transform the AST using the quasiquote function
+                    ast = quasiquote(ast[1])
+                    # If DEBUG-EVAL is set in the environment, print the expanded AST
+                    try:
+                        dbgeval = env.get(LospSymbol("DEBUG-EVAL"))
+                    except KeyError:
+                        dbgeval = False
+                    if dbgeval is True:
+                        sys.stdout.write("EVAL: " + printer.pr_str(ast, True) + "\n")
+                        sys.stdout.flush()
+                    continue  # TCO: re-evaluate the new AST at the top of the loop
+
+                elif first.name == "def!":
+                    val = EVAL(ast[2], env)
+                    env.set(ast[1], val)
+                    return val
+
+                elif first.name == "let*":
+                    bindings = ast[1]
+                    body = ast[2]
+                    env = Env(env)
+                    for i in range(0, len(bindings), 2):
+                        env.set(bindings[i], EVAL(bindings[i + 1], env))
+                    ast = body
+                    continue
+
+                elif first.name == "do":
+                    for expr in ast[1:-1]:
+                        EVAL(expr, env)
+                    ast = ast[-1]
+                    continue
+
+                elif first.name == "if":
+                    cond = EVAL(ast[1], env)
+                    if cond is False or cond is NIL:
+                        ast = ast[3] if len(ast) > 3 else NIL
+                    else:
+                        ast = ast[2]
+                    continue
+
+                elif first.name == "fn*":
+                    params = ast[1]
+                    body = ast[2:]
+
+                    fn = LospFunction(params=params, body=body, env=env)
+
+                    fn.ast = body
+                    fn.params = params
+                    fn.env = env
+                    fn.fn = fn
+
+                    return fn
+                elif first.name == "quote":
+                    # Return the second element as-is, without evaluating it
+                    return ast[1]
+
+            evaluated = [EVAL(x, env) for x in ast]
+            f = evaluated[0]
+            args = evaluated[1:]
+
+            if isinstance(f, LospFunction):
+                env = Env(f.env, binds=f.params, exprs=args)
+
+                for expr in f.ast[:-1]:
+                    EVAL(expr, env)
+
+                ast = f.ast[-1]
+                continue
+
+
+            elif callable(f):
+                return f(*args)
+
+            else:
+                raise TypeError(f"{f} is not callable")
+
+
+        if isinstance(ast, LospVector):
+            return LospVector([EVAL(x, env) for x in ast.items])
+
+        if isinstance(ast, LospHashMap):
+            new_items = []
+            for i in range(0, len(ast.items), 2):
+                k = EVAL(ast.items[i], env)
+                v = EVAL(ast.items[i + 1], env)
+                new_items.extend([k, v])
+            return LospHashMap(new_items)
+
+        return ast
+
+LospFunction.EVAL_fn = staticmethod(EVAL)
+
+
+def READ(s):
+    return reader.read_str(s)
+
+
+def PRINT(val):
+    return printer.pr_str(val)
+
+
+def REP(s):
+    return PRINT(EVAL(READ(s), repl_env))
+
+REP('(def! load-file (fn* (f) (eval (read-string (str "(do " (slurp f) "\nnil)")))))')
+
+if __name__ == "__main__":
+    import sys
+
+    while True:
+        # Handle EOF from input() (i.e., stdin closed) separately from errors
+        try:
+            s = input("user> ")
+        except EOFError:
+            try:
+                sys.stdout.write("\nGoodbye!\n")
+                sys.stdout.flush()
+            except OSError:
+                pass
+            break
+        # Process the input and report errors without exiting the REPL
+        try:
+            out = REP(s)
+            try:
+                sys.stdout.write(out + "\n")
+                sys.stdout.flush()
+            except OSError:
+                break
+        except KeyError as e:
+            try:
+                sys.stdout.write(f"KeyError: {e}\n")
+                sys.stdout.flush()
+            except OSError:
+                break
+        except TypeError as e:
+            try:
+                sys.stdout.write(f"TypeError: {e}\n")
+                sys.stdout.flush()
+            except OSError:
+                break
+        except Exception as e:
+            try:
+                sys.stdout.write(f"Error: {e}\n")
+                sys.stdout.flush()
+            except OSError:
+                break

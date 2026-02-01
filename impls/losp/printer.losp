@@ -1,4 +1,4 @@
-from losptypes import LospSymbol, LospVector, LospHashMap, LospFunction, NIL, LospAtom
+from losptypes import LospSymbol, LospVector, LospHashMap, LospFunction, NIL, LospAtom, LospList
 
 def pr_str(losp_obj, readably=True):
     _r = readably
@@ -28,6 +28,10 @@ def pr_str(losp_obj, readably=True):
             return losp_obj
 
     if isinstance(losp_obj, list):
+        # Special handling for lists with single elements
+        if len(losp_obj) == 1:
+            return f"({pr_str(losp_obj[0], _r)})"  # Print single-element lists like '(1)'
+        
         inner = ' '.join(pr_str(el, _r) for el in losp_obj)
         return f'({inner})'
 
@@ -50,5 +54,8 @@ def pr_str(losp_obj, readably=True):
 
     if isinstance(losp_obj, LospAtom):
         return "(atom " + pr_str(losp_obj.value, True) + ")"
+
+    if isinstance(losp_obj, LospList):
+        return f"({' '.join(map(pr_str, losp_obj.items))})"
 
     raise TypeError(f"Cannot print object of type {type(losp_obj)}")

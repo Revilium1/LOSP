@@ -91,3 +91,12 @@ NIL = LospNil()
 class LospAtom:
     def __init__(self, value):
         self.value = value
+
+class LospList:
+    def __init__(self, items=None):
+        # items should be a list of Losp objects
+        self.items = items if items else []
+
+    def __repr__(self):
+        # Custom string representation for printing
+        return f"({' '.join(map(str, self.items))})"

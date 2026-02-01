@@ -207,6 +207,76 @@ def swap_bang(atom, fn, *args):
     atom.value = new_val
     return new_val
 
+# quotes 
+def cons(x, lst):
+    if isinstance(lst, list):
+        return [x] + lst  # Prepend x to a Python list
+    elif isinstance(lst, LospVector):
+        # Per MAL tests, cons with a vector should return a list, not a vector
+        return [x] + lst.items
+    else:
+        raise TypeError("cons expects a list or LospVector as the second argument")
+
+
+def concat(*args):
+    result = []
+    for lst in args:
+        if isinstance(lst, list):
+            result.extend(lst)  # Append all elements of lst
+        elif isinstance(lst, LospVector):
+            result.extend(lst.items)  # Append all elements of LospVector
+        else:
+            raise TypeError("concat expects list or LospVector arguments")
+    return result  # Return concatenated list
+
+
+def vec_fn(x):
+    """Convert a list to a LospVector or return a LospVector unchanged."""
+    if isinstance(x, list):
+        return LospVector(x)
+    if isinstance(x, LospVector):
+        return x
+    raise TypeError("vec expects a list or LospVector as argument")
+
+
+def quasiquote(ast):
+    # Case 1: ast is a list starting with "unquote"
+    if isinstance(ast, list) and len(ast) > 0 and isinstance(ast[0], LospSymbol):
+        if ast[0].name == "unquote":
+            return ast[1]
+
+    # Case 2: ast is a list
+    if isinstance(ast, list):
+        result = []
+        for elt in reversed(ast):
+            if isinstance(elt, list) and len(elt) > 0 and isinstance(elt[0], LospSymbol):
+                if elt[0].name == "splice-unquote":
+                    # (concat <elt[1]> <result>)
+                    result = [LospSymbol("concat"), elt[1], result]
+                    continue
+            # Otherwise, (cons (quasiquote elt) result)
+            result = [LospSymbol("cons"), quasiquote(elt), result]
+        return result
+
+    # Case 2b: ast is a vector -> produce (vec <list-form>)
+    if isinstance(ast, LospVector):
+        result = []
+        for elt in reversed(ast.items):
+            if isinstance(elt, list) and len(elt) > 0 and isinstance(elt[0], LospSymbol):
+                if elt[0].name == "splice-unquote":
+                    result = [LospSymbol("concat"), elt[1], result]
+                    continue
+            result = [LospSymbol("cons"), quasiquote(elt), result]
+        return [LospSymbol("vec"), result]
+
+    # Case 3: ast is a map or symbol
+    if isinstance(ast, (LospSymbol, LospHashMap)):
+        return [LospSymbol("quote"), ast]
+
+    # Case 4: everything else (numbers, strings, etc.)
+    return ast
+
+
 # ---------------------------
 # Core namespace
 # ---------------------------
@@ -251,4 +321,10 @@ ns = {
     LospSymbol('deref'): deref,
     LospSymbol('reset!'): reset_bang,
     LospSymbol('swap!'): swap_bang,
+
+    # Quotes
+    LospSymbol('cons'): cons,
+    LospSymbol('concat'): concat,
+    LospSymbol('vec'): vec_fn,
+    LospSymbol('quasiquote'): quasiquote,
 }
