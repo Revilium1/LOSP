@@ -73,9 +73,11 @@ def EVAL(ast, env):
                     val = EVAL(ast[2], env)
                     if not isinstance(val, LospFunction):
                         raise TypeError("defmacro! expects a function")
-                    val.is_macro = True
-                    env.set(ast[1], val)
-                    return val
+                    # Do not mutate the original function; create a macro wrapper
+                    macro_copy = LospFunction(params=val.params, body=val.body, env=val.env, name=val.name)
+                    macro_copy.is_macro = True
+                    env.set(ast[1], macro_copy)
+                    return macro_copy
 
                 elif first.name == "let*":
                     new_env = Env(env)

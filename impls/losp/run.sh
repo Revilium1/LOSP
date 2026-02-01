@@ -1,2 +1,2 @@
 #!/usr/bin/env bash
-exec python3 $(dirname $0)/${STEP:-step7_quote}.losp "${@}"
+exec python3 $(dirname $0)/${STEP:-stepA_mal}.losp "${@}"

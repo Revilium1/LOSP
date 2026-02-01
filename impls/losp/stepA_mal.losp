@@ -1,6 +1,6 @@
 import reader, printer, core, sys
 from env import Env
-from core import quasiquote, equal
+from core import quasiquote, equal, str_fn
 from losptypes import LospSymbol, LospVector, LospHashMap, LospFunction, NIL
 
 
@@ -29,7 +29,18 @@ repl_env.set(LospSymbol("true"), True)
 repl_env.set(LospSymbol("false"), False)
 repl_env.set(LospSymbol("eval"), eval_fn)
 repl_env.set(LospSymbol("*ARGV*"), [])
+repl_env.set(LospSymbol("*host-language*"), str_fn("losp"))
 
+def not_implemented(*args, **kwargs):
+    raise NotImplementedError("Function not implemented yet")
+
+# No stubs needed here — core implements the optional functions we need
+stub_symbols = []
+
+# Add stubs to the REPL environment (if any)
+for name in stub_symbols:
+    repl_env.set(LospSymbol(name), not_implemented)
+    
 # Add core throw function
 def losp_throw(val):
     raise lospException(val)
@@ -262,11 +273,15 @@ def REP(s):
 # ==============================
 REP('(def! load-file (fn* (f) (eval (read-string (str "(do " (slurp f) "\nnil)")))))')
 
+# Ensure `cond` macro is available for this step's tests
+REP("(defmacro! cond (fn* (& xs) (if (> (count xs) 0) (list 'if (first xs) (if (> (count xs) 1) (nth xs 1) (throw \"odd number of forms to cond\")) (cons 'cond (rest (rest xs)))))))")
+
 
 # ==============================
 # REPL Loop
 # ==============================
 if __name__ == "__main__":
+    print(REP('(println (str "Mal [" *host-language* "]"))'))
     while True:
         try:
             s = input("user> ")
